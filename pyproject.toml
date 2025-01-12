@@ -1,0 +1,49 @@
+[tool.poetry]
+name = "football-matches-prediction"
+version = "0.1.0"
+description = "Code for experiments"
+authors = ["Rodrigo Azevedo <razevedo@ecovadis.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+pandas = "^2.2.3"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.3"
+ruff = "^0.6.9"
+notebook = "^7.3.2"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "ISC001",
+    "COM812",
+    "D104",
+    "D107",
+    "ANN002",
+    "ANN003",
+    "ANN101",
+    "ANN102",
+    "FA102",
+    "D213",
+    "D203",
+    "D100",
+    "FBT003",
+    "SIM300",
+    "W605",
+    "ERA001",
+    "RUF012",
+    "TD002",
+    "TD003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Ignore `E402` (import violations) in all `__init__.py` files.
+"__init__.py" = ["E402", "F401"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
