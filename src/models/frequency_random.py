@@ -2,25 +2,7 @@ import numpy as np
 import pandas as pd
 
 from src.models.base import BaseMatchPredictor
-
-
-def determine_target(row):
-    if row["home_score"] > row["away_score"]:
-        return 0
-    elif row["home_score"] == row["away_score"]:
-        return 1
-    else:
-        return 2
-
-
-def swap_dataset(df):
-    swaped_df = pd.DataFrame()
-    swaped_df["date"] = df["date"]
-    swaped_df["home_team"] = df["away_team"]
-    swaped_df["home_score"] = df["away_score"]
-    swaped_df["away_score"] = df["home_score"]
-    swaped_df["away_team"] = df["home_team"]
-    return swaped_df
+from src.utils import determine_target, swap_dataset
 
 
 class FrequencyRandomMatchPredictor(BaseMatchPredictor):
@@ -45,12 +27,16 @@ class FrequencyRandomMatchPredictor(BaseMatchPredictor):
             )
         if len(neutral_df):
             self._neutral_prob = (
-                neutral_df["target"].value_counts(normalize=True).sort_index().to_numpy()
+                neutral_df["target"]
+                .value_counts(normalize=True)
+                .sort_index()
+                .to_numpy()
             )
 
     def predict(self, X):
         prob = self.predict_proba(X)
-        return np.array([np.random.choice([0, 1, 2], p=probs) for probs in prob])
+        # return np.array([np.random.choice([0, 1, 2], p=probs) for probs in prob])
+        return np.argmax(prob, axis=1)
 
     def predict_proba(self, X):
         return np.array(

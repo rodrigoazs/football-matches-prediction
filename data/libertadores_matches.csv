@@ -1,3 +1,4 @@
+date,home_team,home_score,away_score,away_team,neutral,knockout,stage,tournament_name,tournament_year
 1960-04-19,Peñarol,7,1,Jorge Wilstermann,False,False,Group Stage,Copa Libertadores de América,1960
 1960-04-30,Jorge Wilstermann,1,1,Peñarol,False,False,Group Stage,Copa Libertadores de América,1960
 1960-04-20,San Lorenzo,3,0,Bahia,False,False,Group Stage,Copa Libertadores de América,1960
