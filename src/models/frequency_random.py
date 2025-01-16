@@ -25,8 +25,8 @@ def swap_dataset(df):
 
 class FrequencyRandomMatchPredictor(BaseMatchPredictor):
     def __init__(self):
-        self._neutral_prob = None
-        self._home_prob = None
+        self._neutral_prob = np.ones(3) / 3
+        self._home_prob = np.ones(3) / 3
 
     def fit(self, X: pd.DataFrame) -> None:
         df = X.copy()
@@ -36,15 +36,17 @@ class FrequencyRandomMatchPredictor(BaseMatchPredictor):
         home_neutral_df = df[df["neutral"] == False]
         home_neutral_df["target"] = home_neutral_df.apply(determine_target, axis=1)
         neutral_df["target"] = neutral_df.apply(determine_target, axis=1)
-        self._home_prob = (
-            home_neutral_df["target"]
-            .value_counts(normalize=True)
-            .sort_index()
-            .to_numpy()
-        )
-        self._neutral_prob = (
-            neutral_df["target"].value_counts(normalize=True).sort_index().to_numpy()
-        )
+        if len(home_neutral_df):
+            self._home_prob = (
+                home_neutral_df["target"]
+                .value_counts(normalize=True)
+                .sort_index()
+                .to_numpy()
+            )
+        if len(neutral_df):
+            self._neutral_prob = (
+                neutral_df["target"].value_counts(normalize=True).sort_index().to_numpy()
+            )
 
     def predict(self, X):
         prob = self.predict_proba(X)
