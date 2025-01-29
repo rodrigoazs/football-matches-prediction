@@ -1,3 +1,76 @@
+import torch
+import torch.nn.functional as F
+
+
+class FeaturesLinear(torch.nn.Module):
+    def __init__(self, team_dims, output_dim=1):
+        super().__init__()
+        self.fc = torch.nn.Embedding(team_dims + 4, output_dim)
+        self.bias = torch.nn.Parameter(torch.zeros((output_dim,)))
+        self.offsets = np.array((0, 0, team_dims, team_dims + 2), dtype=np.long)
+
+    def forward(self, x):
+        """
+        :param x: Long tensor of size ``(batch_size, num_fields)``
+        """
+        x = x + x.new_tensor(self.offsets).unsqueeze(0)
+        return torch.sum(self.fc(x), dim=1) + self.bias
+
+
+class FeaturesEmbedding(torch.nn.Module):
+    def __init__(self, team_dims, embed_dim):
+        super().__init__()
+        self.embedding = torch.nn.Embedding(team_dims + 4, embed_dim)
+        self.offsets = np.array((0, 0, team_dims, team_dims + 2), dtype=np.long)
+        torch.nn.init.xavier_uniform_(self.embedding.weight.data)
+
+    def forward(self, x):
+        """
+        :param x: Long tensor of size ``(batch_size, num_fields)``
+        """
+        x = x + x.new_tensor(self.offsets).unsqueeze(0)
+        return self.embedding(x)
+
+
+class FactorizationMachine(torch.nn.Module):
+    def __init__(self, reduce_sum=True):
+        super().__init__()
+        self.reduce_sum = reduce_sum
+
+    def forward(self, x):
+        """
+        :param x: Float tensor of size ``(batch_size, num_fields, embed_dim)``
+        """
+        square_of_sum = torch.sum(x, dim=1) ** 2
+        sum_of_square = torch.sum(x**2, dim=1)
+        ix = square_of_sum - sum_of_square
+        if self.reduce_sum:
+            ix = torch.sum(ix, dim=1, keepdim=True)
+        return 0.5 * ix
+
+
+class FactorizationMachineModel(torch.nn.Module):
+    """
+    A pytorch implementation of Factorization Machine.
+
+    Reference:
+        S Rendle, Factorization Machines, 2010.
+    """
+
+    def __init__(self, teams_dim, embed_dim):
+        super().__init__()
+        self.embedding = FeaturesEmbedding(teams_dim, embed_dim)
+        self.linear = FeaturesLinear(teams_dim)
+        self.fm = FactorizationMachine(reduce_sum=True)
+
+    def forward(self, x):
+        """
+        :param x: Long tensor of size ``(batch_size, num_fields)``
+        """
+        x = self.linear(x) + self.fm(self.embedding(x))
+        return torch.sigmoid(x.squeeze(1))
+
+
 import numpy as np
 import pandas as pd
 from statsmodels.miscmodels.ordinal_model import OrderedModel
@@ -81,8 +154,7 @@ class ELOgPredictor(BaseMatchPredictor):
         return df
 
     def fit(self, X: pd.DataFrame) -> None:
-        df = X.copy().sort_values("date", ascending=True)
-        df = self._prepare_ratings(df)
+        df = self._prepare_ratings(X)
         df["categorical_result"] = df.apply(
             lambda x: "win"
             if x["home_score"] > x["away_score"]
@@ -105,8 +177,7 @@ class ELOgPredictor(BaseMatchPredictor):
         return np.argmax(prob, axis=1)
 
     def predict_proba(self, X):
-        df = X.copy().sort_values("date", ascending=True)
-        df = self._prepare_ratings(df)
+        df = self._prepare_ratings(X)
         df["rating_difference"] = df["home_rating"] - df["away_rating"]
         x = df["rating_difference"].to_numpy()
         return self._res_log.model.predict(self._res_log.params, exog=x.reshape(-1, 1))
