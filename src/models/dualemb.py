@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
-# import torch
+import torch
+import tqdm
 from statsmodels.miscmodels.ordinal_model import OrderedModel
 
 from src.models.base import BaseMatchPredictor
@@ -10,82 +11,154 @@ CATEGORICAL_DTYPE = pd.CategoricalDtype(
 )
 
 
-# def swap_dataset(df):
-#     swaped_df = pd.DataFrame()
-#     swaped_df["date"] = df["date"]
-#     swaped_df["a_team"] = df["b_team"]
-#     swaped_df["b_team"] = df["a_team"]
-#     swaped_df["a_score"] = df["b_score"]
-#     swaped_df["b_score"] = df["a_score"]
-#     swaped_df["a_home"] = df["b_home"]
-#     swaped_df["b_home"] = df["a_home"]
-#     return swaped_df
+# Training function
+def train(model, optimizer, criterion, data, targets, batch_size):
+    num_samples = data.size(0)
+    model.train()
+
+    # Iterate over the dataset in mini-batches
+    pbar = tqdm.tqdm(range(0, num_samples, batch_size))
+    for start in pbar:
+        end = start + batch_size
+        if end > num_samples:
+            end = num_samples
+
+        # Get the current mini-batch
+        batch_data = data[start:end]
+        batch_targets = targets[start:end]
+
+        # Zero the gradients
+        optimizer.zero_grad()
+
+        # Forward pass: compute predictions
+        outputs = model(data)
+
+        # Compute the loss
+        loss = criterion(outputs, batch_targets)
+
+        # Backward pass: compute gradients
+        loss.backward()
+
+        # Update weights
+        optimizer.step()
+
+        # Update progress bar
+        pbar.set_postfix(loss=f"{loss.item():.4f}")
 
 
-# class DualEmbeddingNN(torch.nn.Module):
-#     def __init__(self, num_embeddings, embedding_dim, hidden_dim):
-#         super(DualEmbeddingNN, self).__init__()
-#         self.embedding = torch.nn.Embedding(
-#             num_embeddings, embedding_dim
-#         )  # Embedding layer for IDs
-#         self.fc1 = torch.nn.Linear(2 * embedding_dim, hidden_dim)
-#         self.fc2 = torch.nn.Linear(hidden_dim, hidden_dim)
-#         self.fc3 = torch.nn.Linear(hidden_dim, 2)
+class DualEmbeddingNN(torch.nn.Module):
+    def __init__(self, num_embeddings, embedding_dim, num_features, hidden_dim):
+        super(DualEmbeddingNN, self).__init__()
+        self.embedding = torch.nn.Embedding(
+            num_embeddings, embedding_dim
+        )  # Embedding layer for IDs
+        self.fc1 = torch.nn.Linear(2 * embedding_dim + num_features, hidden_dim)
+        self.fc2 = torch.nn.Linear(hidden_dim, hidden_dim)
+        self.fc3 = torch.nn.Linear(hidden_dim, 2)
 
-#     def forward(self, id1, id2):
-#         # Get embeddings for the IDs
-#         embedding1 = self.embedding(id1)  # Shape: (batch_size, embedding_dim)
-#         embedding2 = self.embedding(id2)  # Shape: (batch_size, embedding_dim)
+    def forward(self, input_matrix):
+        # # Extract the relevant columns from the input matrix
+        id1 = input_matrix[:, 0]  # Shape: (batch_size,)
+        id2 = input_matrix[:, 1]  # Shape: (batch_size,)
 
-#         # Concatenate the two embeddings and the integer input
-#         # combined = torch.cat((embedding1, embedding2, integer_input.float()), dim=-1)  # Concatenate along the last dimension
-#         combined = torch.cat(
-#             (embedding1, embedding2), dim=-1
-#         )  # Concatenate along the last dimension
+        # Get embeddings for the IDs
+        embedding1 = self.embedding(id1)  # Shape: (batch_size, embedding_dim)
+        embedding2 = self.embedding(id2)  # Shape: (batch_size, embedding_dim)
 
-#         x = torch.relu(self.fc1(combined))
-#         x = torch.relu(self.fc2(x))
-#         x = torch.exp(self.fc3(x))
+        # Concatenate the two embeddings and the integer input
+        combined = torch.cat(
+            (embedding1, embedding2, input_matrix[:, :2]),
+            dim=-1,
+        )  # Concatenate along the last dimension
 
-#         return x
+        x = torch.relu(self.fc1(combined))
+        x = torch.relu(self.fc2(x))
+        x = torch.exp(self.fc3(x))
+
+        return x
 
 
 class DualEmbPredictor(BaseMatchPredictor):
-    def __init__(self):
+    def __init__(
+        self,
+        embedding_dim=10,
+        hidden_dim=3,
+        train_batch_size=2,
+        update_batch_size=2,
+        train_learning_rate=0.001,
+        update_learning_rate=0.001,
+    ):
         self._res_log = None
         self._team_mapping = {}
+        self._embedding_dim = embedding_dim
+        self._hidden_dim = hidden_dim
+        self._train_batch_size = train_batch_size
+        self._update_batch_size = update_batch_size
+        self._train_learning_rate = train_learning_rate
+        self._update_learning_rate = update_learning_rate
+        self._model = None
 
     def _prepare_dataset(self, X):
         X_copy = X.copy().sort_values("date", ascending=True)
         self._team_mapping = {
             team: index
             for index, team in enumerate(
-                set(X["home_team"].unique()).union(set(X["away_team"].unique()))
+                sorted(
+                    list(
+                        set(X["home_team"].unique()).union(set(X["away_team"].unique()))
+                    )
+                )
             )
         }
         df = []
         for _, row in X_copy.iterrows():
-            df.append([
-                self._team_mapping[row["home_team"]],
-                self._team_mapping[row["away_team"]],
-                row["home_score"],
-                row["away_score"],
-                0 if row["neutral"] == True else 1,
-                0,
-            ])
-            df.append([
-                self._team_mapping[row["home_team"]],
-                self._team_mapping[row["away_team"]],
-                row["home_score"],
-                row["away_score"],
-                0 if row["neutral"] == True else 1,
-                0,
-            ])
+            df.append(
+                [
+                    self._team_mapping[row["home_team"]],
+                    self._team_mapping[row["away_team"]],
+                    0 if row["neutral"] == True else 1,
+                    0,
+                    row["home_score"],
+                    row["away_score"],
+                ]
+            )
+            df.append(
+                [
+                    self._team_mapping[row["away_team"]],
+                    self._team_mapping[row["home_team"]],
+                    0,
+                    0 if row["neutral"] == True else 1,
+                    row["away_score"],
+                    row["home_score"],
+                ]
+            )
         return df
 
     def fit(self, X: pd.DataFrame) -> None:
         df = self._prepare_dataset(df)
-        raise Exception(df)
+        df = torch.tensor(df)
+        data = df[:, :-2]
+        score_targets = df[:, -2:]
+        num_embeddings = len(self._team_mapping)
+        num_features = 2
+        self._model = DualEmbeddingNN(
+            num_embeddings=num_embeddings,
+            embedding_dim=self._embedding_dim,
+            num_features=num_features,
+            hidden_dim=self._hidden_dim,
+        )
+        criterion = torch.nn.MSELoss()
+        optimizer = optim.Adam(self._model.parameters(), lr=self._train_learning_rate)
+        train(
+            model=self._model,
+            optimizer=optimizer,
+            criterion=criterion,
+            data=X,
+            targets=score_targets,
+            batch_size=self._train_batch_size,
+        )
+        # Extract the average embedding to get the default embedding
+        self._default_embedding = self._model.embedding.weight.grad.mean(dim=0)
 
     def predict(self, X):
         prob = self.predict_proba(X)
