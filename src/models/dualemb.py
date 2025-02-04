@@ -46,6 +46,39 @@ def train(model, optimizer, criterion, data, targets, batch_size):
         pbar.set_postfix(loss=f"{loss.item():.4f}")
 
 
+# Update function
+def update(model, optimizer, criterion, data, targets, embeddings):
+    # Set the embedding matrix from the given matrix
+    model.embedding.weight = torch.nn.Parameter(embeddings.clone())
+
+    # Freeze all weights except for the embedding layer
+    for name, param in model.named_parameters():
+        if "embedding" not in name:  # Freeze all layers except the embedding layer
+            param.requires_grad = False
+        else:
+            param.requires_grad = True  # Ensure embedding layer is trainable
+
+    # Set the model to training mode
+    model.train()
+
+    # Zero the gradients
+    optimizer.zero_grad()
+
+    # Forward pass: compute predictions
+    outputs = model(data)
+
+    # Compute the loss
+    loss = criterion(outputs, targets)
+
+    # Backward pass: compute gradients
+    loss.backward()
+
+    # Update weights (only the embedding layer will be updated)
+    optimizer.step()
+
+    return outputs, model.embedding.weight.grad
+
+
 class DualEmbeddingNN(torch.nn.Module):
     def __init__(self, num_embeddings, embedding_dim, num_features, hidden_dim):
         super(DualEmbeddingNN, self).__init__()
@@ -159,6 +192,9 @@ class DualEmbPredictor(BaseMatchPredictor):
         )
         # Extract the average embedding to get the default embedding
         self._default_embedding = self._model.embedding.weight.grad.mean(dim=0)
+        self._team_embedding = {
+            team: self._default_embedding for team in self._team_mapping.keys()
+        }
 
     def predict(self, X):
         prob = self.predict_proba(X)

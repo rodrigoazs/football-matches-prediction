@@ -3,7 +3,7 @@ import unittest
 import pandas as pd
 import torch
 
-from src.models.dualemb import DualEmbeddingNN, DualEmbPredictor, train
+from src.models.dualemb import DualEmbeddingNN, DualEmbPredictor, train, update
 
 
 def test_dualebm_prepare_dataset():
@@ -104,3 +104,35 @@ class TestDualEmbeddingNN(unittest.TestCase):
             targets=self.score_targets,
             batch_size=self.batch_size,
         )
+
+    def test_update(self):
+        learning_rate = 0.001
+        criterion = torch.nn.MSELoss()
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate)
+        id1 = torch.tensor([0, 1])
+        id2 = torch.tensor([1, 0])
+        team_at_home = torch.tensor([0, 1])
+        opponent_at_home = torch.tensor([1, 0])
+        score_targets = torch.tensor([[2, 1], [1, 2]]).float()
+        data = torch.cat(
+            (
+                id1.unsqueeze(-1),
+                id2.unsqueeze(-1),
+                team_at_home.unsqueeze(-1),
+                opponent_at_home.unsqueeze(-1),
+            ),
+            dim=-1,
+        )
+        embeddings = torch.rand((2, self.embedding_dim))
+        outputs, updated_embedding = update(
+            model=self.model,
+            optimizer=optimizer,
+            criterion=criterion,
+            data=data,
+            targets=score_targets,
+            embeddings=embeddings,
+        )
+        self.assertEqual(outputs.shape, (2, 2))
+        self.assertEqual(updated_embedding.shape, (2, self.embedding_dim))
+        
+
