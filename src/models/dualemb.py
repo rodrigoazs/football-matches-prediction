@@ -12,7 +12,7 @@ CATEGORICAL_DTYPE = pd.CategoricalDtype(
 
 
 # Training function
-def train(model, optimizer, criterion, data, targets, batch_size):
+def _train(model, optimizer, criterion, data, targets, batch_size):
     num_samples = data.size(0)
     model.train()
 
@@ -47,7 +47,7 @@ def train(model, optimizer, criterion, data, targets, batch_size):
 
 
 # Update function
-def update(model, optimizer, criterion, data, targets, embeddings):
+def _update(model, optimizer, criterion, data, targets, embeddings):
     # Set the embedding matrix from the given matrix
     model.embedding.weight = torch.nn.Parameter(embeddings.clone())
 
@@ -77,6 +77,96 @@ def update(model, optimizer, criterion, data, targets, embeddings):
     optimizer.step()
 
     return outputs, model.embedding.weight.grad
+
+
+def _prepare_dataset(X: pd.DataFrame):
+    X_copy = X.copy().sort_values("date", ascending=True)
+    team_mapping = {
+        team: index
+        for index, team in enumerate(
+            sorted(
+                list(set(X["home_team"].unique()).union(set(X["away_team"].unique())))
+            )
+        )
+    }
+    df = []
+    for _, row in X_copy.iterrows():
+        df.append(
+            [
+                team_mapping[row["home_team"]],
+                team_mapping[row["away_team"]],
+                0 if row["neutral"] == True else 1,
+                0,
+                row["home_score"],
+                row["away_score"],
+            ]
+        )
+        df.append(
+            [
+                team_mapping[row["away_team"]],
+                team_mapping[row["home_team"]],
+                0,
+                0 if row["neutral"] == True else 1,
+                row["away_score"],
+                row["home_score"],
+            ]
+        )
+    return df, team_mapping
+
+
+def _predict_and_update(
+    X, model, default_embedding, learning_rate, embeddings=None
+):
+    X_copy = X.copy().sort_values("date", ascending=True)
+    teams_embeddings = {} if embeddings is None else embeddings
+    outputs = None
+    for _, row in X_copy.iterrows():
+        criterion = torch.nn.MSELoss()
+        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+        team_embedding = teams_embeddings.get(row["home_team"], default_embedding)
+        opponent_embedding = teams_embeddings.get(row["away_team"], default_embedding)
+        embeddings = torch.tensor([team_embedding, opponent_embedding])
+        X = torch.tensor(
+            [
+                [
+                    0,
+                    1,
+                    0 if row["neutral"] == True else 1,
+                    0,
+                ],
+                [
+                    1,
+                    0,
+                    0,
+                    0 if row["neutral"] == True else 1,
+                ],
+            ]
+        )
+        y = torch.tensor(
+            [
+                [
+                    row["home_score"],
+                    row["away_score"],
+                ],
+                [
+                    row["away_score"],
+                    row["home_score"],
+                ],
+            ]
+        ).float()
+        output, updated_embedding = _update(
+            model=model,
+            optimizer=optimizer,
+            criterion=criterion,
+            data=X,
+            targets=y,
+            embeddings=embeddings,
+        )
+        teams_embeddings[row["home_team"]] = updated_embedding[0].tolist()
+        teams_embeddings[row["away_team"]] = updated_embedding[1].tolist()
+        outputs = torch.cat((outputs, output), dim=0) if outputs is not None else output
+    return outputs, teams_embeddings
+
 
 
 class DualEmbeddingNN(torch.nn.Module):
@@ -117,7 +207,6 @@ class DualEmbPredictor(BaseMatchPredictor):
         embedding_dim=10,
         hidden_dim=3,
         train_batch_size=2,
-        update_batch_size=2,
         train_learning_rate=0.001,
         update_learning_rate=0.001,
     ):
@@ -126,49 +215,13 @@ class DualEmbPredictor(BaseMatchPredictor):
         self._embedding_dim = embedding_dim
         self._hidden_dim = hidden_dim
         self._train_batch_size = train_batch_size
-        self._update_batch_size = update_batch_size
         self._train_learning_rate = train_learning_rate
         self._update_learning_rate = update_learning_rate
         self._model = None
 
-    def _prepare_dataset(self, X):
-        X_copy = X.copy().sort_values("date", ascending=True)
-        self._team_mapping = {
-            team: index
-            for index, team in enumerate(
-                sorted(
-                    list(
-                        set(X["home_team"].unique()).union(set(X["away_team"].unique()))
-                    )
-                )
-            )
-        }
-        df = []
-        for _, row in X_copy.iterrows():
-            df.append(
-                [
-                    self._team_mapping[row["home_team"]],
-                    self._team_mapping[row["away_team"]],
-                    0 if row["neutral"] == True else 1,
-                    0,
-                    row["home_score"],
-                    row["away_score"],
-                ]
-            )
-            df.append(
-                [
-                    self._team_mapping[row["away_team"]],
-                    self._team_mapping[row["home_team"]],
-                    0,
-                    0 if row["neutral"] == True else 1,
-                    row["away_score"],
-                    row["home_score"],
-                ]
-            )
-        return df
-
     def fit(self, X: pd.DataFrame) -> None:
-        df = self._prepare_dataset(df)
+        df, team_mapping = _prepare_dataset(df)
+        self._team_mapping = team_mapping
         df = torch.tensor(df)
         data = df[:, :-2]
         score_targets = df[:, -2:]
@@ -182,7 +235,7 @@ class DualEmbPredictor(BaseMatchPredictor):
         )
         criterion = torch.nn.MSELoss()
         optimizer = optim.Adam(self._model.parameters(), lr=self._train_learning_rate)
-        train(
+        _train(
             model=self._model,
             optimizer=optimizer,
             criterion=criterion,
@@ -191,10 +244,16 @@ class DualEmbPredictor(BaseMatchPredictor):
             batch_size=self._train_batch_size,
         )
         # Extract the average embedding to get the default embedding
-        self._default_embedding = self._model.embedding.weight.grad.mean(dim=0)
+        self._default_embedding = self._model.embedding.weight.grad.mean(dim=0).tolist()
         self._team_embedding = {
             team: self._default_embedding for team in self._team_mapping.keys()
         }
+        # Predict and update
+        outputs, team_embeddings = _predict_and_update(
+            X, self._model, self._default_embedding, self._update_learning_rate, embeddings=self._team_embedding
+        )
+        self._team_embedding.update(team_embeddings)
+        return outputs
 
     def predict(self, X):
         prob = self.predict_proba(X)

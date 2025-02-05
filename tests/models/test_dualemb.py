@@ -3,12 +3,17 @@ import unittest
 import pandas as pd
 import torch
 
-from src.models.dualemb import DualEmbeddingNN, DualEmbPredictor, train, update
+from src.models.dualemb import (
+    DualEmbeddingNN,
+    DualEmbPredictor,
+    _prepare_dataset,
+    _predict_and_update,
+    _train,
+    _update,
+)
 
 
 def test_dualebm_prepare_dataset():
-    model = DualEmbPredictor()
-
     df = pd.DataFrame(
         [
             {
@@ -29,13 +34,14 @@ def test_dualebm_prepare_dataset():
             },
         ]
     )
-    result = model._prepare_dataset(df)
+    result, mappings = _prepare_dataset(df)
     assert result == [
         [0, 2, 0, 0, 2, 1],
         [2, 0, 0, 0, 1, 2],
         [0, 1, 1, 0, 2, 3],
         [1, 0, 0, 1, 3, 2],
     ]
+    assert mappings == {"team1": 0, "team2": 1, "team3": 2}
 
 
 class TestDualEmbeddingNN(unittest.TestCase):
@@ -96,7 +102,7 @@ class TestDualEmbeddingNN(unittest.TestCase):
         learning_rate = 0.001
         criterion = torch.nn.MSELoss()
         optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate)
-        train(
+        _train(
             model=self.model,
             optimizer=optimizer,
             criterion=criterion,
@@ -124,7 +130,7 @@ class TestDualEmbeddingNN(unittest.TestCase):
             dim=-1,
         )
         embeddings = torch.rand((2, self.embedding_dim))
-        outputs, updated_embedding = update(
+        outputs, updated_embedding = _update(
             model=self.model,
             optimizer=optimizer,
             criterion=criterion,
@@ -134,5 +140,32 @@ class TestDualEmbeddingNN(unittest.TestCase):
         )
         self.assertEqual(outputs.shape, (2, 2))
         self.assertEqual(updated_embedding.shape, (2, self.embedding_dim))
-        
 
+    def test_predict_and_update(self):
+        learning_rate = 0.001
+        df = pd.DataFrame(
+            [
+                {
+                    "date": "2024-02-01",
+                    "home_team": "team1",
+                    "home_score": 2,
+                    "away_score": 3,
+                    "away_team": "team2",
+                    "neutral": False,
+                },
+                {
+                    "date": "2024-02-02",
+                    "home_team": "team1",
+                    "home_score": 2,
+                    "away_score": 3,
+                    "away_team": "team3",
+                    "neutral": False,
+                },
+            ]
+        )
+        default_embedding = torch.rand((1, self.embedding_dim)).tolist()[0]
+        outputs, teams_embeddings = _predict_and_update(
+            df, self.model, default_embedding, learning_rate, embeddings=None
+        )
+        self.assertEqual(outputs.shape, (4, 2))
+        self.assertEqual(len(teams_embeddings), 3)
