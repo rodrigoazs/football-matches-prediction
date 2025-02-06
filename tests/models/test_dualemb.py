@@ -6,8 +6,9 @@ import torch
 from src.models.dualemb import (
     DualEmbeddingNN,
     DualEmbPredictor,
-    _prepare_dataset,
     _predict_and_update,
+    _prepare_dataset,
+    _prepare_predicted_dataset,
     _train,
     _update,
 )
@@ -42,6 +43,16 @@ def test_dualebm_prepare_dataset():
         [1, 0, 0, 1, 3, 2],
     ]
     assert mappings == {"team1": 0, "team2": 1, "team3": 2}
+
+
+def test_dualebm_prepare_predicted_dataset():
+    outputs = torch.tensor([[1, 2], [4, 3], [5, 6], [7, 7]])
+    targets = torch.tensor([[1, 2], [2, 1], [1, 1], [0, 0]])
+    df = _prepare_predicted_dataset(outputs, targets)
+    assert df.to_dict() == {
+        "predicted_score_difference": {0: -1, 1: 1, 2: -1, 3: 0},
+        "categorical_result": {0: "loss", 1: "win", 2: "draw", 3: "draw"},
+    }
 
 
 class TestDualEmbeddingNN(unittest.TestCase):
@@ -164,8 +175,36 @@ class TestDualEmbeddingNN(unittest.TestCase):
             ]
         )
         default_embedding = torch.rand((1, self.embedding_dim)).tolist()[0]
-        outputs, teams_embeddings = _predict_and_update(
+        outputs, targets, teams_embeddings = _predict_and_update(
             df, self.model, default_embedding, learning_rate, embeddings=None
         )
         self.assertEqual(outputs.shape, (4, 2))
+        self.assertEqual(targets.shape, (4, 2))
         self.assertEqual(len(teams_embeddings), 3)
+
+
+def test_dualemb_fit():
+    df = pd.DataFrame(
+        [
+            {
+                "date": "2024-02-01",
+                "home_team": "team1",
+                "home_score": 2,
+                "away_score": 3,
+                "away_team": "team2",
+                "neutral": False,
+            },
+            {
+                "date": "2024-01-01",
+                "home_team": "team1",
+                "home_score": 2,
+                "away_score": 1,
+                "away_team": "team3",
+                "neutral": True,
+            },
+        ]
+    )
+    model = DualEmbPredictor()
+    model.fit(df)
+    assert model._res_log is not None
+    assert model._model is not None
