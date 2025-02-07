@@ -208,3 +208,30 @@ def test_dualemb_fit():
     model.fit(df)
     assert model._res_log is not None
     assert model._model is not None
+
+
+def test_dualemb_predict_proba():
+    df = pd.DataFrame(
+        [
+            {
+                "date": "2024-02-01",
+                "home_team": "team1",
+                "home_score": 2,
+                "away_score": 3,
+                "away_team": "team2",
+                "neutral": False,
+            },
+            {
+                "date": "2024-01-01",
+                "home_team": "team1",
+                "home_score": 2,
+                "away_score": 1,
+                "away_team": "team3",
+                "neutral": True,
+            },
+        ]
+    )
+    model = DualEmbPredictor()
+    model.fit(df)
+    pred = model.predict_proba(df)
+    assert pred.shape == (2, 3)

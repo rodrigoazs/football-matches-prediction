@@ -294,11 +294,19 @@ class DualEmbPredictor(BaseMatchPredictor):
         return np.argmax(prob, axis=1)
 
     def predict_proba(self, X):
-        df = X.copy().sort_values("date", ascending=True)
-        df = self._prepare_ratings(df)
-        df["rating_difference"] = df["home_rating"] - df["away_rating"]
-        x = df["rating_difference"].to_numpy()
-        return self._res_log.model.predict(self._res_log.params, exog=x.reshape(-1, 1))
+        # Predict and update
+        outputs, targets, _ = _predict_and_update(
+            X,
+            self._model,
+            self._default_embedding,
+            self._update_learning_rate,
+            embeddings=self._team_embedding,
+        )
+        df = _prepare_predicted_dataset(outputs, targets)
+        # Slice the array to get only the even indices
+        return self._res_log.model.predict(
+            self._res_log.params, exog=df[["predicted_score_difference"]]
+        )[::2]
 
     def update_ratings(self, X):
         pass
