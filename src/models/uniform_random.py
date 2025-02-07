@@ -4,15 +4,18 @@ from src.models.base import BaseMatchPredictor
 
 
 class UniformRandomMatchPredictor(BaseMatchPredictor):
-    def fit(self, X):
+    def fit(self, X, y):
+        """Build a classifier from the training set (X, y)."""
+        pass
+
+    def update(self, X, y):
+        """Update a classifier from the a given set (X, y)."""
         pass
 
     def predict(self, X):
-        prob = self.predict_proba(X)
-        return np.argmax(prob, axis=1)
-
-    def predict_proba(self, X):
+        """Predict class probabilities of the input samples X."""
         return np.ones((len(X), 3)) / 3
 
-    def update_ratings(self, X):
-        pass
+    def predict_and_update(self, X):
+        """Predict class probabilities and then update the classifier."""
+        return np.ones((len(X), 3)) / 3

@@ -1,15 +1,6 @@
 import pandas as pd
 
 
-def determine_target(row):
-    if row["home_score"] > row["away_score"]:
-        return 0
-    elif row["home_score"] == row["away_score"]:
-        return 1
-    else:
-        return 2
-
-
 def swap_dataset(df):
     swaped_df = pd.DataFrame()
     swaped_df["date"] = df["date"]
