@@ -1,11 +1,14 @@
 import numpy as np
+import pandas as pd
 
 from src.models.base import BaseMatchPredictor
 
 
-class UniformRandomMatchPredictor(BaseMatchPredictor):
+class UniformMatchPredictor(BaseMatchPredictor):
+    def __init__(self):
+        self.prob = {}
+
     def fit(self, X, y):
-        """Build a classifier from the training set (X, y)."""
         pass
 
     def update(self, X, y):
@@ -18,4 +21,4 @@ class UniformRandomMatchPredictor(BaseMatchPredictor):
 
     def predict_and_update(self, X):
         """Predict class probabilities and then update the classifier."""
-        return np.ones((len(X), 3)) / 3
+        return self.predict(X)
