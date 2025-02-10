@@ -46,6 +46,6 @@ class FrequencyMatchPredictor(BaseMatchPredictor):
             ]
         )
 
-    def predict_and_update(self, X):
+    def predict_and_update(self, X, y):
         """Predict class probabilities and then update the classifier."""
         return self.predict(X)

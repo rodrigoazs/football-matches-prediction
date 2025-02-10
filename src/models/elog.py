@@ -22,31 +22,52 @@ class EloRating:
             self.rating[team] = self.initial_rating
         return self.rating[team]
 
-    def create_rating(self, home, away):
-        if home not in self.rating:
-            self.rating[home] = self.initial_rating
-        if away not in self.rating:
-            self.rating[away] = self.initial_rating
+    def create_rating(self, team, opponent):
+        if team not in self.rating:
+            self.rating[team] = self.initial_rating
+        if opponent not in self.rating:
+            self.rating[opponent] = self.initial_rating
 
-    def expected_score(self, home, away, neutral):
-        self.create_rating(home, away)
-        home_advantage = 0 if neutral else self.home_advantage
+    def expected_score(self, team, opponent, team_at_home, opponent_at_home):
+        self.create_rating(team, opponent)
+        team_home_advantage = self.home_advantage if team_at_home else 0
+        opponent_home_advantage = self.home_advantage if opponent_at_home else 0
         return 1 / (
-            1 + 10 ** ((self.rating[away] - (self.rating[home] + home_advantage)) / 400)
+            1
+            + 10
+            ** (
+                (
+                    (self.rating[opponent] + opponent_home_advantage)
+                    - (self.rating[team] + team_home_advantage)
+                )
+                / 400
+            )
         )
 
-    def update_ratings(self, home, away, home_score, away_score, neutral):
-        alfa_home = (
-            1 if home_score > away_score else 0.5 if home_score == away_score else 0
+    def update_ratings(
+        self, team, opponent, team_score, opponent_score, team_at_home, opponent_at_home
+    ):
+        alfa_team = (
+            1
+            if team_score > opponent_score
+            else 0.5
+            if team_score == opponent_score
+            else 0
         )
-        alfa_away = (
-            0 if home_score > away_score else 0.5 if home_score == away_score else 1
+        alfa_opponent = (
+            0
+            if team_score > opponent_score
+            else 0.5
+            if team_score == opponent_score
+            else 1
         )
-        home_expected = self.expected_score(home, away, neutral)
-        away_expected = 1 - home_expected
-        k_factor = self.k0 * (1 + abs(away_score - home_score)) ** self.delta
-        self.rating[home] += k_factor * (alfa_home - home_expected)
-        self.rating[away] += k_factor * (alfa_away - away_expected)
+        team_expected = self.expected_score(
+            team, opponent, team_at_home, opponent_at_home
+        )
+        opponent_expected = 1 - team_expected
+        k_factor = self.k0 * (1 + abs(opponent_score - team_score)) ** self.delta
+        self.rating[team] += k_factor * (alfa_team - team_expected)
+        self.rating[opponent] += k_factor * (alfa_opponent - opponent_expected)
 
 
 class ELOgPredictor(BaseMatchPredictor):
@@ -56,19 +77,25 @@ class ELOgPredictor(BaseMatchPredictor):
     def _prepare_ratings(self, X, y):
         df = pd.concat([X, y], axis=1)
         for index, row in df.iterrows():
-            home_advantage = (
+            team_home_advantage = (
                 self.elo.home_advantage if row["team_at_home"] == 1.0 else 0
             )
             df.loc[index, "team_rating"] = (
-                self.elo.get_rating(row["team_id"]) + home_advantage
+                self.elo.get_rating(row["team_id"]) + team_home_advantage
             )
-            df.loc[index, "opponent_rating"] = self.elo.get_rating(row["opponent_id"])
+            opponent_home_advantage = (
+                self.elo.home_advantage if row["opponent_at_home"] == 1.0 else 0
+            )
+            df.loc[index, "opponent_rating"] = (
+                self.elo.get_rating(row["opponent_id"]) + opponent_home_advantage
+            )
             self.elo.update_ratings(
                 row["team_id"],
                 row["opponent_id"],
                 row["team_score"],
                 row["opponent_score"],
-                True if row["team_at_home"] == 0.0 else False,
+                True if row["team_at_home"] == 1.0 else False,
+                True if row["opponent_at_home"] == 1.0 else False,
             )
         return df
 
@@ -96,20 +123,26 @@ class ELOgPredictor(BaseMatchPredictor):
                 row["opponent_id"],
                 row["team_score"],
                 row["opponent_score"],
-                True if row["team_at_home"] == 0.0 else False,
+                True if row["team_at_home"] == 1.0 else False,
+                True if row["opponent_at_home"] == 1.0 else False,
             )
 
     def predict(self, X):
         """Predict class probabilities of the input samples X."""
         df = X.copy()
         for index, row in df.iterrows():
-            home_advantage = (
+            team_home_advantage = (
                 self.elo.home_advantage if row["team_at_home"] == 1.0 else 0
             )
             df.loc[index, "team_rating"] = (
-                self.elo.get_rating(row["team_id"]) + home_advantage
+                self.elo.get_rating(row["team_id"]) + team_home_advantage
             )
-            df.loc[index, "opponent_rating"] = self.elo.get_rating(row["opponent_id"])
+            opponent_home_advantage = (
+                self.elo.home_advantage if row["opponent_at_home"] == 1.0 else 0
+            )
+            df.loc[index, "opponent_rating"] = (
+                self.elo.get_rating(row["opponent_id"]) + opponent_home_advantage
+            )
         df["rating_difference"] = df["team_rating"] - df["opponent_rating"]
         return self.logit.model.predict(
             self.logit.params, exog=df[["rating_difference"]]

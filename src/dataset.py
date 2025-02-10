@@ -58,8 +58,30 @@ def get_dataset():
     mls_df = mls_df.drop(columns=["year"])
     mls_df["neutral"] = False
     mls_df["fold"] = "mls"
-    return pd.concat(
+    df = pd.concat(
         [brazil_df, libertadores_df, mls_df, europe_df, international_df],
         axis=0,
         ignore_index=True,
     )
+    df["team_at_home"] = df["neutral"].apply(lambda x: 0.0 if x else 1.0)
+    df["opponent_at_home"] = 0.0
+    df = df.rename(
+        columns={
+            "home_team": "team_id",
+            "away_team": "opponent_id",
+            "home_score": "team_score",
+            "away_score": "opponent_score",
+        }
+    )
+    df = df.sort_values(by="date", ascending=True)
+    return df[
+        [
+            "team_id",
+            "opponent_id",
+            "team_at_home",
+            "opponent_at_home",
+            "team_score",
+            "opponent_score",
+            "fold",
+        ]
+    ].reset_index(drop=True)

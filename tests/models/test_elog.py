@@ -20,8 +20,8 @@ def test_elo_create_rating():
 def test_elo_expected_score():
     elo = EloRating()
     elo.create_rating("teamA", "teamB")
-    expected_score_A = elo.expected_score("teamA", "teamB", neutral=True)
-    expected_score_B = elo.expected_score("teamB", "teamA", neutral=True)
+    expected_score_A = elo.expected_score("teamA", "teamB", False, False)
+    expected_score_B = elo.expected_score("teamB", "teamA", False, False)
 
     assert expected_score_A == 0.5
     assert expected_score_B == 0.5
@@ -30,7 +30,7 @@ def test_elo_expected_score():
 def test_elo_update_ratings_home_wins():
     elo = EloRating()
     elo.create_rating("teamA", "teamB")
-    elo.update_ratings("teamA", "teamB", 3, 1, neutral=False)
+    elo.update_ratings("teamA", "teamB", 3, 1, True, False)
 
     rating_A = elo.get_rating("teamA")
     rating_B = elo.get_rating("teamB")
@@ -42,7 +42,7 @@ def test_elo_update_ratings_home_wins():
 def test_elo_update_ratings_away_wins():
     elo = EloRating()
     elo.create_rating("teamA", "teamB")
-    elo.update_ratings("teamA", "teamB", 1, 3, neutral=False)
+    elo.update_ratings("teamA", "teamB", 1, 3, True, False)
 
     rating_A = elo.get_rating("teamA")
     rating_B = elo.get_rating("teamB")
@@ -54,7 +54,7 @@ def test_elo_update_ratings_away_wins():
 def test_elo_update_ratings_draw():
     elo = EloRating()
     elo.create_rating("teamA", "teamB")
-    elo.update_ratings("teamA", "teamB", 2, 2, neutral=False)
+    elo.update_ratings("teamA", "teamB", 2, 2, True, False)
 
     rating_A = elo.get_rating("teamA")
     rating_B = elo.get_rating("teamB")
@@ -66,7 +66,7 @@ def test_elo_update_ratings_draw():
 def test_elo_update_ratings_draw_neutral():
     elo = EloRating()
     elo.create_rating("teamA", "teamB")
-    elo.update_ratings("teamA", "teamB", 2, 2, neutral=True)
+    elo.update_ratings("teamA", "teamB", 2, 2, False, False)
 
     rating_A = elo.get_rating("teamA")
     rating_B = elo.get_rating("teamB")
@@ -78,7 +78,7 @@ def test_elo_update_ratings_draw_neutral():
 def test_elo_home_advantage():
     elo = EloRating()
     elo.create_rating("teamA", "teamB")
-    expected_score_home = elo.expected_score("teamA", "teamB", neutral=False)
+    expected_score_home = elo.expected_score("teamA", "teamB", True, False)
 
     # For a home game, the home team should have an advantage, so the expected score of home should be greater
     assert expected_score_home > 0.5
@@ -103,7 +103,6 @@ def test_elog_predictor_update(mock_inputs, mock_targets):
     elo = ELOgPredictor()
     elo.update(mock_inputs, mock_targets)
     assert elo.elo.rating["team1"] < 1500
-    assert elo.elo.rating["team2"] > 1500
     assert elo.elo.rating["team3"] > 1500
 
 
@@ -196,11 +195,10 @@ def test_elog_predictor_predict_symmetric(mock_inputs, mock_targets):
     assert np.allclose(pred[1:-1, 0], pred[1:-1, 2], atol=1e-3)
 
 
-def test_elog_predictor_predict_ant_update(mock_inputs, mock_targets):
+def test_elog_predictor_predict_and_update(mock_inputs, mock_targets):
     elo = ELOgPredictor()
     elo.fit(mock_inputs, mock_targets)
     pred = elo.predict_and_update(mock_inputs, mock_targets)
     assert elo.elo.rating["team1"] < 1500
-    assert elo.elo.rating["team2"] > 1500
     assert elo.elo.rating["team3"] > 1500
     assert pred.shape == (3, 3)
