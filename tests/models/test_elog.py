@@ -72,10 +72,27 @@ def test_elo_update_ratings_draw_neutral():
     assert rating_B == 1500
 
 
-def test_home_advantage():
+def test_elo_home_advantage():
     elo = EloRating()
     elo.create_rating("teamA", "teamB")
     expected_score_home = elo.expected_score("teamA", "teamB", neutral=False)
 
     # For a home game, the home team should have an advantage, so the expected score of home should be greater
     assert expected_score_home > 0.5
+
+
+def test_elog_predictor_prepare_ratings(mock_inputs, mock_targets):
+    elo = ELOgPredictor()
+    df = elo._prepare_ratings(mock_inputs, mock_targets)
+    assert df["team_rating"][0] == 1500
+    assert df["opponent_rating"][0] == 1500
+    assert df["team_rating"][1] > 1500
+    assert df["opponent_rating"][1] == 1500
+    assert df["team_rating"][2] > 1500
+    assert df["opponent_rating"][2] > 1500
+
+
+def test_elog_predictor_fit(mock_inputs, mock_targets):
+    elo = ELOgPredictor()
+    elo.fit(mock_inputs, mock_targets)
+    assert elo.logit

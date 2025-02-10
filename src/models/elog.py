@@ -59,11 +59,13 @@ class ELOgPredictor(BaseMatchPredictor):
             home_advantage = (
                 self.elo.home_advantage if row["team_at_home"] == False else 0
             )
-            df.loc[index, "team_rating"] = elo.get_rating(row["team"]) + home_advantage
-            df.loc[index, "opponent_rating"] = elo.get_rating(row["opponent"])
-            elo.update_ratings(
-                row["team"],
-                row["opponent"],
+            df.loc[index, "team_rating"] = (
+                self.elo.get_rating(row["team_id"]) + home_advantage
+            )
+            df.loc[index, "opponent_rating"] = self.elo.get_rating(row["opponent_id"])
+            self.elo.update_ratings(
+                row["team_id"],
+                row["opponent_id"],
                 row["team_score"],
                 row["opponent_score"],
                 True if row["team_at_home"] == 0 else False,
@@ -82,7 +84,7 @@ class ELOgPredictor(BaseMatchPredictor):
         ).astype(CATEGORICAL_DTYPE)
         df["rating_difference"] = df["team_rating"] - df["opponent_rating"]
         mod_log = OrderedModel(
-            df["categorical_result"], df[["rating_difference"]], distr="logit"
+            df["target"], df[["rating_difference"]], distr="logit"
         )
         self.logit = mod_log.fit(method="bfgs", disp=False)
 
