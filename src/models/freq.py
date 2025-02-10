@@ -9,8 +9,9 @@ class FrequencyMatchPredictor(BaseMatchPredictor):
         self.prob = {}
 
     def fit(self, X, y):
-        df = X[["team_at_home", "opponent_at_home"]]
-        df["target"] = y.apply(
+        df_X, df_y = self._reverse_matches(X, y)
+        df = df_X[["team_at_home", "opponent_at_home"]]
+        df["target"] = df_y.apply(
             lambda x: "win"
             if x["team_score"] > x["opponent_score"]
             else "draw"
