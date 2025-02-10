@@ -57,7 +57,7 @@ class ELOgPredictor(BaseMatchPredictor):
         df = pd.concat([X, y], axis=1)
         for index, row in df.iterrows():
             home_advantage = (
-                self.elo.home_advantage if row["team_at_home"] == False else 0
+                self.elo.home_advantage if row["team_at_home"] == 1.0 else 0
             )
             df.loc[index, "team_rating"] = (
                 self.elo.get_rating(row["team_id"]) + home_advantage
@@ -68,7 +68,7 @@ class ELOgPredictor(BaseMatchPredictor):
                 row["opponent_id"],
                 row["team_score"],
                 row["opponent_score"],
-                True if row["team_at_home"] == 0 else False,
+                True if row["team_at_home"] == 0.0 else False,
             )
         return df
 
@@ -96,7 +96,7 @@ class ELOgPredictor(BaseMatchPredictor):
                 row["opponent_id"],
                 row["team_score"],
                 row["opponent_score"],
-                True if row["team_at_home"] == 0 else False,
+                True if row["team_at_home"] == 0.0 else False,
             )
 
     def predict(self, X):
@@ -104,7 +104,7 @@ class ELOgPredictor(BaseMatchPredictor):
         df = X.copy()
         for index, row in df.iterrows():
             home_advantage = (
-                self.elo.home_advantage if row["team_at_home"] == False else 0
+                self.elo.home_advantage if row["team_at_home"] == 1.0 else 0
             )
             df.loc[index, "team_rating"] = (
                 self.elo.get_rating(row["team_id"]) + home_advantage
@@ -115,7 +115,7 @@ class ELOgPredictor(BaseMatchPredictor):
             self.logit.params, exog=df[["rating_difference"]]
         )
 
-    def predict_and_update(self, X):
+    def predict_and_update(self, X, y):
         """Predict class probabilities and then update the classifier."""
         df = self._prepare_ratings(X, y)
         df["rating_difference"] = df["team_rating"] - df["opponent_rating"]

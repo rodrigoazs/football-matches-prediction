@@ -87,12 +87,10 @@ def test_elo_home_advantage():
 def test_elog_predictor_prepare_ratings(mock_inputs, mock_targets):
     elo = ELOgPredictor()
     df = elo._prepare_ratings(mock_inputs, mock_targets)
-    assert df["team_rating"][0] == 1500
+    assert df["team_rating"][0] == 1560
     assert df["opponent_rating"][0] == 1500
-    assert df["team_rating"][1] > 1500
+    assert df["team_rating"][1] < 1500
     assert df["opponent_rating"][1] == 1500
-    assert df["team_rating"][2] > 1500
-    assert df["opponent_rating"][2] > 1500
 
 
 def test_elog_predictor_fit(mock_inputs, mock_targets):
@@ -114,9 +112,23 @@ def test_elog_predictor_predict(mock_inputs, mock_targets):
     elo.fit(mock_inputs, mock_targets)
     pred = elo.predict(mock_inputs)
     assert pred.shape == (3, 3)
+    # assert symmetric
+    X = pd.DataFrame(
+        [
+            {
+                "team_id": "team998",
+                "opponent_id": "team999",
+                "team_at_home": 0.0,
+                "opponent_at_home": 0.0,
+            }
+        ]
+    )
+    pred = elo.predict(X)
+    assert np.array_equal(np.argmax(pred, axis=1), np.array([1]))
+    assert np.allclose(pred[:, 0], pred[:, 2], atol=1e-3)
 
 
-def test_elog_predictor_predict_synmetric(mock_inputs, mock_targets):
+def test_elog_predictor_predict_symmetric(mock_inputs, mock_targets):
     X = pd.DataFrame(
         [
             {
@@ -143,6 +155,12 @@ def test_elog_predictor_predict_synmetric(mock_inputs, mock_targets):
                 "team_at_home": 0.0,
                 "opponent_at_home": 0.0,
             },
+            {
+                "team_id": "team5",
+                "opponent_id": "team6",
+                "team_at_home": 0.0,
+                "opponent_at_home": 1.0,
+            },
         ]
     )
     y = pd.DataFrame(
@@ -163,10 +181,26 @@ def test_elog_predictor_predict_synmetric(mock_inputs, mock_targets):
                 "team_score": 2.0,
                 "opponent_score": 2.0,
             },
+            {
+                "team_score": 0.0,
+                "opponent_score": 1.0,
+            },
         ]
     )
     elo = ELOgPredictor()
     elo.fit(X, y)
     pred = elo.predict(X)
-    assert np.array_equal(np.argmax(pred, axis=1), np.array([1, 1, 1, 1]))
-    assert np.array_equal(pred[:, 0], pred[:, 2])
+    # at home win, all draws in neutral, at away loss
+    assert np.array_equal(np.argmax(pred, axis=1), np.array([0, 1, 1, 1, 2]))
+    # assert symmetric
+    assert np.allclose(pred[1:-1, 0], pred[1:-1, 2], atol=1e-3)
+
+
+def test_elog_predictor_predict_ant_update(mock_inputs, mock_targets):
+    elo = ELOgPredictor()
+    elo.fit(mock_inputs, mock_targets)
+    pred = elo.predict_and_update(mock_inputs, mock_targets)
+    assert elo.elo.rating["team1"] < 1500
+    assert elo.elo.rating["team2"] > 1500
+    assert elo.elo.rating["team3"] > 1500
+    assert pred.shape == (3, 3)
