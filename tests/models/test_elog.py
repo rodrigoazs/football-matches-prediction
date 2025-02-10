@@ -1,3 +1,6 @@
+import numpy as np
+import pandas as pd
+
 from src.models.elog import ELOgPredictor, EloRating
 
 
@@ -96,3 +99,74 @@ def test_elog_predictor_fit(mock_inputs, mock_targets):
     elo = ELOgPredictor()
     elo.fit(mock_inputs, mock_targets)
     assert elo.logit
+
+
+def test_elog_predictor_update(mock_inputs, mock_targets):
+    elo = ELOgPredictor()
+    elo.update(mock_inputs, mock_targets)
+    assert elo.elo.rating["team1"] < 1500
+    assert elo.elo.rating["team2"] > 1500
+    assert elo.elo.rating["team3"] > 1500
+
+
+def test_elog_predictor_predict(mock_inputs, mock_targets):
+    elo = ELOgPredictor()
+    elo.fit(mock_inputs, mock_targets)
+    pred = elo.predict(mock_inputs)
+    assert pred.shape == (3, 3)
+
+
+def test_elog_predictor_predict_synmetric(mock_inputs, mock_targets):
+    X = pd.DataFrame(
+        [
+            {
+                "team_id": "team3",
+                "opponent_id": "team4",
+                "team_at_home": 1.0,
+                "opponent_at_home": 0.0,
+            },
+            {
+                "team_id": "team1",
+                "opponent_id": "team2",
+                "team_at_home": 0.0,
+                "opponent_at_home": 0.0,
+            },
+            {
+                "team_id": "team1",
+                "opponent_id": "team2",
+                "team_at_home": 0.0,
+                "opponent_at_home": 0.0,
+            },
+            {
+                "team_id": "team1",
+                "opponent_id": "team2",
+                "team_at_home": 0.0,
+                "opponent_at_home": 0.0,
+            },
+        ]
+    )
+    y = pd.DataFrame(
+        [
+            {
+                "team_score": 1.0,
+                "opponent_score": 0.0,
+            },
+            {
+                "team_score": 0.0,
+                "opponent_score": 0.0,
+            },
+            {
+                "team_score": 1.0,
+                "opponent_score": 1.0,
+            },
+            {
+                "team_score": 2.0,
+                "opponent_score": 2.0,
+            },
+        ]
+    )
+    elo = ELOgPredictor()
+    elo.fit(X, y)
+    pred = elo.predict(X)
+    assert np.array_equal(np.argmax(pred, axis=1), np.array([1, 1, 1, 1]))
+    assert np.array_equal(pred[:, 0], pred[:, 2])
