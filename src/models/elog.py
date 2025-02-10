@@ -101,6 +101,7 @@ class ELOgPredictor(BaseMatchPredictor):
 
     def fit(self, X, y):
         df = self._prepare_ratings(X, y)
+        self.elo.rating = {}  # Clear ratings
         df, _ = self._reverse_matches(df, pd.DataFrame())
         df["target"] = df.apply(
             lambda x: "win"
