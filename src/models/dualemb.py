@@ -225,10 +225,10 @@ class DualEmbPredictor(BaseMatchPredictor):
     def fit(self, X: pd.DataFrame, y: pd.DataFrame) -> None:
         X, y, team_mapping = self._prepare_dataset(X, y)
         self.team_mapping = team_mapping
-        data = torch.tensor(X.to_numpy())
-        score_targets = torch.tensor(y.to_numpy()).float()
+        data = torch.tensor(X.values).long()
+        score_targets = torch.tensor(y.values).float()
         num_embeddings = len(self.team_mapping)
-        num_features = 2
+        num_features = data.shape[1] - 2
         self.model = DualEmbeddingNN(
             num_embeddings=num_embeddings,
             embedding_dim=self.embedding_dim,
@@ -247,25 +247,25 @@ class DualEmbPredictor(BaseMatchPredictor):
             targets=score_targets,
             batch_size=self.train_batch_size,
         )
-        # Extract the average embedding to get the default embedding
-        self.default_embedding = self.model.embedding.weight.grad.mean(dim=0).tolist()
-        self.team_embedding = {
-            team: self.default_embedding for team in self.team_mapping.keys()
-        }
-        # Predict and update
-        outputs, targets, _ = _predict_and_update(
-            X,
-            self.model,
-            self.default_embedding,
-            self.update_learning_rate,
-            embeddings=self.team_embedding,
-        )
-        # Train logit model
-        df = _prepare_predicted_dataset(outputs, targets)
-        mod_log = OrderedModel(
-            df["categorical_result"], df[["predicted_score_difference"]], distr="logit"
-        )
-        self.logit = mod_log.fit(method="bfgs", disp=False)
+        # # Extract the average embedding to get the default embedding
+        # self.default_embedding = self.model.embedding.weight.grad.mean(dim=0).tolist()
+        # self.team_embedding = {
+        #     team: self.default_embedding for team in self.team_mapping.keys()
+        # }
+        # # Predict and update
+        # outputs, targets, _ = _predict_and_update(
+        #     X,
+        #     self.model,
+        #     self.default_embedding,
+        #     self.update_learning_rate,
+        #     embeddings=self.team_embedding,
+        # )
+        # # Train logit model
+        # df = _prepare_predicted_dataset(outputs, targets)
+        # mod_log = OrderedModel(
+        #     df["categorical_result"], df[["predicted_score_difference"]], distr="logit"
+        # )
+        # self.logit = mod_log.fit(method="bfgs", disp=False)
 
     def predict(self, X):
         # Predict and update
