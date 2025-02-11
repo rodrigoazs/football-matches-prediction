@@ -11,13 +11,12 @@ from src.models.dualemb import (
 
 
 @pytest.fixture
-def setup_dualemb_model():
+def mock_dualemb_model():
     # Set up the model and test data
     num_embeddings = 100  # Number of unique IDs
     num_features = 2  # Number of features
     embedding_dim = 10  # Dimension of the embeddings
     hidden_dim = 20  # Hidden layer dimension
-    batch_size = 5  # Batch size for testing
 
     # Initialize the model
     model = DualEmbeddingNN(
@@ -26,7 +25,14 @@ def setup_dualemb_model():
         num_features=num_features,
         hidden_dim=hidden_dim,
     )
+    return model
 
+
+@pytest.fixture
+def mock_dualemb_inputs():
+    # Set up config
+    num_embeddings = 100
+    batch_size = 5
     # Create test input tensors
     id1 = torch.randint(0, num_embeddings, (batch_size,))
     id2 = torch.randint(0, num_embeddings, (batch_size,))
@@ -42,8 +48,16 @@ def setup_dualemb_model():
         ),
         dim=-1,
     )
+    return data
 
-    return model, data, score_targets
+
+@pytest.fixture
+def mock_dualemb_targets():
+    # Set up config
+    batch_size = 5
+    # Create test targets tensors
+    score_targets = torch.randint(0, 5, (batch_size, 2)).float()
+    return score_targets
 
 
 def test_dualebm_prepare_dataset(mock_inputs, mock_targets):
@@ -79,56 +93,47 @@ def test_dualebm_prepare_predicted_dataset():
     }
 
 
-def test_dualebm_output_shape(setup_dualemb_model):
-    model, data, _ = setup_dualemb_model
+def test_dualebm_output_shape(mock_dualemb_model, mock_dualemb_inputs):
     # Test that the output shape is correct
-    output = model(data)
+    output = mock_dualemb_model(mock_dualemb_inputs)
     assert output.shape == (5, 2)
 
 
-def test_dualebm_embedding_application(setup_dualemb_model):
-    model, _, _ = setup_dualemb_model
+def test_dualebm_embedding_application(mock_dualemb_model):
     id1 = torch.randint(0, 1, (5,))
     # Test that embeddings are applied correctly
-    embedding1 = model.embedding(id1)
+    embedding1 = mock_dualemb_model.embedding(id1)
     assert embedding1.shape == (5, 10)
 
 
-def test_dualebm_forward_pass(setup_dualemb_model):
-    (
-        model,
-        data,
-        _,
-    ) = setup_dualemb_model
+def test_dualebm_forward_pass(mock_dualemb_model, mock_dualemb_inputs):
     # Test the forward pass logic
-    output = model(data)
+    output = mock_dualemb_model(mock_dualemb_inputs)
     # Ensure the output is non-negative (since we apply torch.exp in the last layer)
     assert torch.all(output >= 0)
 
 
-def test_dualebm_train(setup_dualemb_model):
+def test_dualebm_train(mock_dualemb_model, mock_dualemb_inputs, mock_dualemb_targets):
     model = DualEmbPredictor()
-    neural_model, data, score_targets = setup_dualemb_model
     batch_size = 2
     learning_rate = 0.001
     criterion = torch.nn.MSELoss()
-    optimizer = torch.optim.Adam(neural_model.parameters(), lr=learning_rate)
+    optimizer = torch.optim.Adam(mock_dualemb_model.parameters(), lr=learning_rate)
     model._train(
-        model=neural_model,
+        model=mock_dualemb_model,
         optimizer=optimizer,
         criterion=criterion,
-        data=data,
-        targets=score_targets,
+        data=mock_dualemb_inputs,
+        targets=mock_dualemb_targets,
         batch_size=batch_size,
     )
 
 
-def test_dualebm_update(setup_dualemb_model):
+def test_dualebm_update(mock_dualemb_model):
     model = DualEmbPredictor()
-    neural_model, _, score_targets = setup_dualemb_model
     learning_rate = 0.001
     criterion = torch.nn.MSELoss()
-    optimizer = torch.optim.Adam(neural_model.parameters(), lr=learning_rate)
+    optimizer = torch.optim.Adam(mock_dualemb_model.parameters(), lr=learning_rate)
     id1 = torch.tensor([0, 1])
     id2 = torch.tensor([1, 0])
     team_at_home = torch.tensor([0, 1])
@@ -145,7 +150,7 @@ def test_dualebm_update(setup_dualemb_model):
     )
     embeddings = torch.rand((2, 10))
     outputs, updated_embedding = model._update(
-        model=neural_model,
+        model=mock_dualemb_model,
         optimizer=optimizer,
         criterion=criterion,
         data=data,
@@ -156,43 +161,28 @@ def test_dualebm_update(setup_dualemb_model):
     assert updated_embedding.shape == (2, 10)
 
 
-# def test_dualebm_predict_and_update(setup_model):
-#     model, _, _, _, _, _, _ = setup_model
-#     learning_rate = 0.001
-#     df = pd.DataFrame(
-#         [
-#             {
-#                 "date": "2024-02-01",
-#                 "home_team": "team1",
-#                 "home_score": 2,
-#                 "away_score": 3,
-#                 "away_team": "team2",
-#                 "neutral": False,
-#             },
-#             {
-#                 "date": "2024-02-02",
-#                 "home_team": "team1",
-#                 "home_score": 2,
-#                 "away_score": 3,
-#                 "away_team": "team3",
-#                 "neutral": False,
-#             },
-#         ]
-#     )
-#     default_embedding = torch.rand((1, 10)).tolist()[0]
-#     outputs, targets, teams_embeddings = _predict_and_update(
-#         df, model, default_embedding, learning_rate, embeddings=None
-#     )
-#     assert outputs.shape == (4, 2)
-#     assert targets.shape == (4, 2)
-#     assert len(teams_embeddings) == 3
+def test_dualebm_predict_and_update(mock_dualemb_model, mock_inputs, mock_targets):
+    model = DualEmbPredictor()
+    learning_rate = 0.001
+    default_embedding = torch.rand((1, 10)).tolist()[0]
+    outputs, targets, teams_embeddings = model._predict_and_update(
+        mock_inputs,
+        mock_targets,
+        mock_dualemb_model,
+        default_embedding,
+        learning_rate,
+        embeddings=None,
+    )
+    assert outputs.shape == (4, 2)
+    assert targets.shape == (4, 2)
+    assert len(teams_embeddings) == 3
 
 
 def test_dualemb_fit(mock_inputs, mock_targets):
     model = DualEmbPredictor()
     model.fit(mock_inputs, mock_targets)
-    # assert model.logit is not None
-    # assert model.model is not None
+    assert model.logit is not None
+    assert model.model is not None
 
 
 # def test_dualemb_predict_proba():

@@ -101,12 +101,13 @@ class DualEmbPredictor(BaseMatchPredictor):
         return df_X, df_y, team_mapping
 
     def _predict_and_update(
-        self, input_data, model, default_embedding, learning_rate, embeddings=None
+        self, X, y, model, default_embedding, learning_rate, embeddings=None
     ):
         teams_embeddings = {} if embeddings is None else embeddings
         outputs = None
         targets = None
-        for _, row in input_data.iterrows():
+        reversed_X, reversed_y = self._reverse_matches()
+        for _, row in df.iterrows():
             criterion = torch.nn.MSELoss()
             optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
             team_embedding = teams_embeddings.get(row["team_id"], default_embedding)
@@ -114,34 +115,6 @@ class DualEmbPredictor(BaseMatchPredictor):
                 row["opponent_id"], default_embedding
             )
             embeddings = torch.tensor([team_embedding, opponent_embedding])
-            X = torch.tensor(
-                [
-                    [
-                        0,
-                        1,
-                        0 if row["neutral"] == True else 1,
-                        0,
-                    ],
-                    [
-                        1,
-                        0,
-                        0,
-                        0 if row["neutral"] == True else 1,
-                    ],
-                ]
-            )
-            y = torch.tensor(
-                [
-                    [
-                        row["home_score"],
-                        row["away_score"],
-                    ],
-                    [
-                        row["away_score"],
-                        row["home_score"],
-                    ],
-                ]
-            ).float()
             output, updated_embedding = _update(
                 model=model,
                 optimizer=optimizer,
@@ -224,11 +197,15 @@ class DualEmbPredictor(BaseMatchPredictor):
 
     def fit(self, X: pd.DataFrame, y: pd.DataFrame) -> None:
         X, y, team_mapping = self._prepare_dataset(X, y)
+        # Set mapping
         self.team_mapping = team_mapping
+        # Convert data
         data = torch.tensor(X.values).long()
-        score_targets = torch.tensor(y.values).float()
+        targets = torch.tensor(y.values).float()
+        # Get parameters
         num_embeddings = len(self.team_mapping)
         num_features = data.shape[1] - 2
+        # Train model
         self.model = DualEmbeddingNN(
             num_embeddings=num_embeddings,
             embedding_dim=self.embedding_dim,
@@ -244,14 +221,32 @@ class DualEmbPredictor(BaseMatchPredictor):
             optimizer=optimizer,
             criterion=criterion,
             data=data,
-            targets=score_targets,
+            targets=targets,
             batch_size=self.train_batch_size,
         )
-        # # Extract the average embedding to get the default embedding
-        # self.default_embedding = self.model.embedding.weight.grad.mean(dim=0).tolist()
-        # self.team_embedding = {
-        #     team: self.default_embedding for team in self.team_mapping.keys()
-        # }
+        # Extract the average embedding to get the default embedding
+        self.default_embedding = self.model.embedding.weight.grad.mean(dim=0).tolist()
+        # # Predict and update
+        # outputs, targets, _ = self._predict_and_update(
+        #     X,
+        #     y,
+        #     self.model,
+        #     self.default_embedding,
+        #     self.update_learning_rate,
+        #     embeddings=self.team_embedding,
+        # )
+        # # Train logit model
+        # df = self._prepare_predicted_dataset(outputs, targets)
+        # mod_log = OrderedModel(
+        #     df["categorical_result"], df[["predicted_score_difference"]], distr="logit"
+        # )
+        # self.logit = mod_log.fit(method="bfgs", disp=False)
+
+    def update(self, X: pd.DataFrame, y: pd.DataFrame) -> None:
+        pass
+
+    def predict(self, X: pd.DataFrame):
+        pass
         # # Predict and update
         # outputs, targets, _ = _predict_and_update(
         #     X,
@@ -260,24 +255,11 @@ class DualEmbPredictor(BaseMatchPredictor):
         #     self.update_learning_rate,
         #     embeddings=self.team_embedding,
         # )
-        # # Train logit model
         # df = _prepare_predicted_dataset(outputs, targets)
-        # mod_log = OrderedModel(
-        #     df["categorical_result"], df[["predicted_score_difference"]], distr="logit"
-        # )
-        # self.logit = mod_log.fit(method="bfgs", disp=False)
+        # # Slice the array to get only the even indices
+        # return self.logit.model.predict(
+        #     self.logit.params, exog=df[["predicted_score_difference"]]
+        # )[::2]
 
-    def predict(self, X):
-        # Predict and update
-        outputs, targets, _ = _predict_and_update(
-            X,
-            self.model,
-            self.default_embedding,
-            self.update_learning_rate,
-            embeddings=self.team_embedding,
-        )
-        df = _prepare_predicted_dataset(outputs, targets)
-        # Slice the array to get only the even indices
-        return self.logit.model.predict(
-            self.logit.params, exog=df[["predicted_score_difference"]]
-        )[::2]
+    def predict_and_update(self, X: pd.DataFrame, y: pd.DataFrame) -> None:
+        pass
