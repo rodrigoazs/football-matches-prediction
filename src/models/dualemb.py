@@ -11,187 +11,6 @@ CATEGORICAL_DTYPE = pd.CategoricalDtype(
 )
 
 
-# Training function
-def _train(model, optimizer, criterion, data, targets, batch_size):
-    num_samples = data.size(0)
-    model.train()
-
-    # Iterate over the dataset in mini-batches
-    pbar = tqdm.tqdm(range(0, num_samples, batch_size))
-    for start in pbar:
-        end = start + batch_size
-        if end > num_samples:
-            end = num_samples
-
-        # Get the current mini-batch
-        batch_data = data[start:end]
-        batch_targets = targets[start:end]
-
-        # Zero the gradients
-        optimizer.zero_grad()
-
-        # Forward pass: compute predictions
-        outputs = model(batch_data)
-
-        # Compute the loss
-        loss = criterion(outputs, batch_targets)
-
-        # Backward pass: compute gradients
-        loss.backward()
-
-        # Update weights
-        optimizer.step()
-
-        # Update progress bar
-        pbar.set_postfix(loss=f"{loss.item():.4f}")
-
-
-# Update function
-def _update(model, optimizer, criterion, data, targets, embeddings):
-    # Set the embedding matrix from the given matrix
-    model.embedding.weight = torch.nn.Parameter(embeddings.clone())
-
-    # Freeze all weights except for the embedding layer
-    for name, param in model.named_parameters():
-        if "embedding" not in name:  # Freeze all layers except the embedding layer
-            param.requires_grad = False
-        else:
-            param.requires_grad = True  # Ensure embedding layer is trainable
-
-    # Set the model to training mode
-    model.train()
-
-    # Zero the gradients
-    optimizer.zero_grad()
-
-    # Forward pass: compute predictions
-    outputs = model(data)
-
-    # Compute the loss
-    loss = criterion(outputs, targets)
-
-    # Backward pass: compute gradients
-    loss.backward()
-
-    # Update weights (only the embedding layer will be updated)
-    optimizer.step()
-
-    return outputs, model.embedding.weight.grad
-
-
-def _prepare_dataset(X: pd.DataFrame):
-    X_copy = X.copy().sort_values("date", ascending=True)
-    team_mapping = {
-        team: index
-        for index, team in enumerate(
-            sorted(
-                list(set(X["home_team"].unique()).union(set(X["away_team"].unique())))
-            )
-        )
-    }
-    df = []
-    for _, row in X_copy.iterrows():
-        df.append(
-            [
-                team_mapping[row["home_team"]],
-                team_mapping[row["away_team"]],
-                0 if row["neutral"] == True else 1,
-                0,
-                row["home_score"],
-                row["away_score"],
-            ]
-        )
-        df.append(
-            [
-                team_mapping[row["away_team"]],
-                team_mapping[row["home_team"]],
-                0,
-                0 if row["neutral"] == True else 1,
-                row["away_score"],
-                row["home_score"],
-            ]
-        )
-    return df, team_mapping
-
-
-def _prepare_predicted_dataset(outputs, targets):
-    df = pd.DataFrame(
-        {
-            "predicted_team_score": outputs[:, 0].tolist(),
-            "predicted_opponent_score": outputs[:, 1].tolist(),
-            "team_score": targets[:, 0].tolist(),
-            "opponent_score": targets[:, 1].tolist(),
-        }
-    )
-    df["predicted_score_difference"] = (
-        df["predicted_team_score"] - df["predicted_opponent_score"]
-    )
-    df["categorical_result"] = df.apply(
-        lambda x: "win"
-        if x["team_score"] > x["opponent_score"]
-        else "draw"
-        if x["team_score"] == x["opponent_score"]
-        else "loss",
-        axis=1,
-    )
-    df["categorical_result"] = df["categorical_result"].astype(CATEGORICAL_DTYPE)
-    return df[["predicted_score_difference", "categorical_result"]]
-
-
-def _predict_and_update(X, model, default_embedding, learning_rate, embeddings=None):
-    X_copy = X.copy().sort_values("date", ascending=True)
-    teams_embeddings = {} if embeddings is None else embeddings
-    outputs = None
-    targets = None
-    for _, row in X_copy.iterrows():
-        criterion = torch.nn.MSELoss()
-        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-        team_embedding = teams_embeddings.get(row["home_team"], default_embedding)
-        opponent_embedding = teams_embeddings.get(row["away_team"], default_embedding)
-        embeddings = torch.tensor([team_embedding, opponent_embedding])
-        X = torch.tensor(
-            [
-                [
-                    0,
-                    1,
-                    0 if row["neutral"] == True else 1,
-                    0,
-                ],
-                [
-                    1,
-                    0,
-                    0,
-                    0 if row["neutral"] == True else 1,
-                ],
-            ]
-        )
-        y = torch.tensor(
-            [
-                [
-                    row["home_score"],
-                    row["away_score"],
-                ],
-                [
-                    row["away_score"],
-                    row["home_score"],
-                ],
-            ]
-        ).float()
-        output, updated_embedding = _update(
-            model=model,
-            optimizer=optimizer,
-            criterion=criterion,
-            data=X,
-            targets=y,
-            embeddings=embeddings,
-        )
-        teams_embeddings[row["home_team"]] = updated_embedding[0].tolist()
-        teams_embeddings[row["away_team"]] = updated_embedding[1].tolist()
-        outputs = torch.cat((outputs, output), dim=0) if outputs is not None else output
-        targets = torch.cat((targets, y), dim=0) if targets is not None else y
-    return outputs, targets, teams_embeddings
-
-
 class DualEmbeddingNN(torch.nn.Module):
     def __init__(self, num_embeddings, embedding_dim, num_features, hidden_dim):
         super(DualEmbeddingNN, self).__init__()
@@ -219,7 +38,7 @@ class DualEmbeddingNN(torch.nn.Module):
 
         x = torch.relu(self.fc1(combined))
         x = torch.relu(self.fc2(x))
-        x = torch.exp(self.fc3(x))
+        x = torch.relu(self.fc3(x))
 
         return x
 
@@ -233,80 +52,232 @@ class DualEmbPredictor(BaseMatchPredictor):
         train_learning_rate=0.001,
         update_learning_rate=0.001,
     ):
-        self._res_log = None
-        self._model = None
-        self._team_mapping = {}
-        self._embedding_dim = embedding_dim
-        self._hidden_dim = hidden_dim
-        self._train_batch_size = train_batch_size
-        self._train_learning_rate = train_learning_rate
-        self._update_learning_rate = update_learning_rate
+        self.logit = None
+        self.model = None
+        self.team_mapping = {}
+        self.embedding_dim = embedding_dim
+        self.hidden_dim = hidden_dim
+        self.train_batch_size = train_batch_size
+        self.train_learning_rate = train_learning_rate
+        self.update_learning_rate = update_learning_rate
 
-    def fit(self, X: pd.DataFrame) -> None:
-        df, team_mapping = _prepare_dataset(X)
-        self._team_mapping = team_mapping
-        df = torch.tensor(df)
-        data = df[:, :-2]
-        score_targets = df[:, -2:].float()
-        num_embeddings = len(self._team_mapping)
+    def _prepare_predicted_dataset(self, outputs, targets):
+        df = pd.DataFrame(
+            {
+                "predicted_team_score": outputs[:, 0].tolist(),
+                "predicted_opponent_score": outputs[:, 1].tolist(),
+                "team_score": targets[:, 0].tolist(),
+                "opponent_score": targets[:, 1].tolist(),
+            }
+        )
+        df["predicted_score_difference"] = (
+            df["predicted_team_score"] - df["predicted_opponent_score"]
+        )
+        df["categorical_result"] = df.apply(
+            lambda x: "win"
+            if x["team_score"] > x["opponent_score"]
+            else "draw"
+            if x["team_score"] == x["opponent_score"]
+            else "loss",
+            axis=1,
+        )
+        df["categorical_result"] = df["categorical_result"].astype(CATEGORICAL_DTYPE)
+        return df[["predicted_score_difference", "categorical_result"]]
+
+    def _prepare_dataset(self, X: pd.DataFrame, y: pd.DataFrame) -> list:
+        team_mapping = {
+            team: index
+            for index, team in enumerate(
+                sorted(
+                    list(
+                        set(X["team_id"].unique()).union(set(X["opponent_id"].unique()))
+                    )
+                )
+            )
+        }
+        df_X, df_y = self._reverse_matches(X, y)
+        df_X["team_id"] = df_X["team_id"].map(team_mapping)
+        df_X["opponent_id"] = df_X["opponent_id"].map(team_mapping)
+        return df_X, df_y, team_mapping
+
+    def _predict_and_update(
+        self, input_data, model, default_embedding, learning_rate, embeddings=None
+    ):
+        teams_embeddings = {} if embeddings is None else embeddings
+        outputs = None
+        targets = None
+        for _, row in input_data.iterrows():
+            criterion = torch.nn.MSELoss()
+            optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+            team_embedding = teams_embeddings.get(row["team_id"], default_embedding)
+            opponent_embedding = teams_embeddings.get(
+                row["opponent_id"], default_embedding
+            )
+            embeddings = torch.tensor([team_embedding, opponent_embedding])
+            X = torch.tensor(
+                [
+                    [
+                        0,
+                        1,
+                        0 if row["neutral"] == True else 1,
+                        0,
+                    ],
+                    [
+                        1,
+                        0,
+                        0,
+                        0 if row["neutral"] == True else 1,
+                    ],
+                ]
+            )
+            y = torch.tensor(
+                [
+                    [
+                        row["home_score"],
+                        row["away_score"],
+                    ],
+                    [
+                        row["away_score"],
+                        row["home_score"],
+                    ],
+                ]
+            ).float()
+            output, updated_embedding = _update(
+                model=model,
+                optimizer=optimizer,
+                criterion=criterion,
+                data=X,
+                targets=y,
+                embeddings=embeddings,
+            )
+            teams_embeddings[row["home_team"]] = updated_embedding[0].tolist()
+            teams_embeddings[row["away_team"]] = updated_embedding[1].tolist()
+            outputs = (
+                torch.cat((outputs, output), dim=0) if outputs is not None else output
+            )
+            targets = torch.cat((targets, y), dim=0) if targets is not None else y
+        return outputs, targets, teams_embeddings
+
+    def _update(self, model, optimizer, criterion, data, targets, embeddings):
+        # Set the embedding matrix from the given matrix
+        model.embedding.weight = torch.nn.Parameter(embeddings.clone())
+
+        # Freeze all weights except for the embedding layer
+        for name, param in model.named_parameters():
+            if "embedding" not in name:  # Freeze all layers except the embedding layer
+                param.requires_grad = False
+            else:
+                param.requires_grad = True  # Ensure embedding layer is trainable
+
+        # Set the model to training mode
+        model.train()
+
+        # Zero the gradients
+        optimizer.zero_grad()
+
+        # Forward pass: compute predictions
+        outputs = model(data)
+
+        # Compute the loss
+        loss = criterion(outputs, targets)
+
+        # Backward pass: compute gradients
+        loss.backward()
+
+        # Update weights (only the embedding layer will be updated)
+        optimizer.step()
+
+        return outputs, model.embedding.weight.grad
+
+    def _train(self, model, optimizer, criterion, data, targets, batch_size):
+        num_samples = data.size(0)
+        model.train()
+
+        # Iterate over the dataset in mini-batches
+        pbar = tqdm.tqdm(range(0, num_samples, batch_size))
+        for start in pbar:
+            end = start + batch_size
+            if end > num_samples:
+                end = num_samples
+
+            # Get the current mini-batch
+            batch_data = data[start:end]
+            batch_targets = targets[start:end]
+
+            # Zero the gradients
+            optimizer.zero_grad()
+
+            # Forward pass: compute predictions
+            outputs = model(batch_data)
+
+            # Compute the loss
+            loss = criterion(outputs, batch_targets)
+
+            # Backward pass: compute gradients
+            loss.backward()
+
+            # Update weights
+            optimizer.step()
+
+            # Update progress bar
+            pbar.set_postfix(loss=f"{loss.item():.4f}")
+
+    def fit(self, X: pd.DataFrame, y: pd.DataFrame) -> None:
+        X, y, team_mapping = self._prepare_dataset(X, y)
+        self.team_mapping = team_mapping
+        data = torch.tensor(X.to_numpy())
+        score_targets = torch.tensor(y.to_numpy()).float()
+        num_embeddings = len(self.team_mapping)
         num_features = 2
-        self._model = DualEmbeddingNN(
+        self.model = DualEmbeddingNN(
             num_embeddings=num_embeddings,
-            embedding_dim=self._embedding_dim,
+            embedding_dim=self.embedding_dim,
             num_features=num_features,
-            hidden_dim=self._hidden_dim,
+            hidden_dim=self.hidden_dim,
         )
         criterion = torch.nn.MSELoss()
         optimizer = torch.optim.Adam(
-            self._model.parameters(), lr=self._train_learning_rate
+            self.model.parameters(), lr=self.train_learning_rate
         )
-        # raise Exception(data)
-        _train(
-            model=self._model,
+        self._train(
+            model=self.model,
             optimizer=optimizer,
             criterion=criterion,
             data=data,
             targets=score_targets,
-            batch_size=self._train_batch_size,
+            batch_size=self.train_batch_size,
         )
         # Extract the average embedding to get the default embedding
-        self._default_embedding = self._model.embedding.weight.grad.mean(dim=0).tolist()
-        self._team_embedding = {
-            team: self._default_embedding for team in self._team_mapping.keys()
+        self.default_embedding = self.model.embedding.weight.grad.mean(dim=0).tolist()
+        self.team_embedding = {
+            team: self.default_embedding for team in self.team_mapping.keys()
         }
         # Predict and update
         outputs, targets, _ = _predict_and_update(
             X,
-            self._model,
-            self._default_embedding,
-            self._update_learning_rate,
-            embeddings=self._team_embedding,
+            self.model,
+            self.default_embedding,
+            self.update_learning_rate,
+            embeddings=self.team_embedding,
         )
         # Train logit model
         df = _prepare_predicted_dataset(outputs, targets)
         mod_log = OrderedModel(
             df["categorical_result"], df[["predicted_score_difference"]], distr="logit"
         )
-        self._res_log = mod_log.fit(method="bfgs", disp=False)
+        self.logit = mod_log.fit(method="bfgs", disp=False)
 
     def predict(self, X):
-        prob = self.predict_proba(X)
-        return np.argmax(prob, axis=1)
-
-    def predict_proba(self, X):
         # Predict and update
         outputs, targets, _ = _predict_and_update(
             X,
-            self._model,
-            self._default_embedding,
-            self._update_learning_rate,
-            embeddings=self._team_embedding,
+            self.model,
+            self.default_embedding,
+            self.update_learning_rate,
+            embeddings=self.team_embedding,
         )
         df = _prepare_predicted_dataset(outputs, targets)
         # Slice the array to get only the even indices
-        return self._res_log.model.predict(
-            self._res_log.params, exog=df[["predicted_score_difference"]]
+        return self.logit.model.predict(
+            self.logit.params, exog=df[["predicted_score_difference"]]
         )[::2]
-
-    def update_ratings(self, X):
-        pass
