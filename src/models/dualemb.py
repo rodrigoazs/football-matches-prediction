@@ -83,7 +83,6 @@ class DualEmbPredictor(BaseMatchPredictor):
             axis=1,
         )
         df["categorical_result"] = df["categorical_result"].astype(CATEGORICAL_DTYPE)
-        df.to_csv("results.csv")
         return df[["predicted_score_difference", "categorical_result"]]
 
     def _prepare_dataset(self, X: pd.DataFrame, y: pd.DataFrame) -> list:
@@ -261,9 +260,6 @@ class DualEmbPredictor(BaseMatchPredictor):
         self.default_embedding = self.model.embedding.weight.grad.mean(dim=0).tolist()
         # Predict
         outputs = self.model(data)
-        # Save tensors to CSV files
-        np.savetxt("tdata.csv", data.numpy(), delimiter=",")
-        np.savetxt("toutputs.csv", outputs.detach().numpy(), delimiter=",")
         # Train logit model
         df = self._prepare_predicted_dataset(outputs, targets)
         mod_log = OrderedModel(
