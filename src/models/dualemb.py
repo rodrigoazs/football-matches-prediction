@@ -32,7 +32,7 @@ class DualEmbeddingNN(torch.nn.Module):
 
         # Concatenate the two embeddings and the integer input
         combined = torch.cat(
-            (embedding1, embedding2, input_matrix[:, :2]),
+            (embedding1, embedding2, input_matrix[:, 2:]),
             dim=-1,
         )  # Concatenate along the last dimension
 
@@ -48,15 +48,16 @@ class DualEmbPredictor(BaseMatchPredictor):
         self,
         embedding_dim=10,
         hidden_dim=3,
-        train_batch_size=2,
+        num_epochs=10,
+        train_batch_size=32,
         train_learning_rate=0.001,
         update_learning_rate=0.001,
     ):
         self.logit = None
         self.model = None
-        self.team_mapping = {}
         self.embedding_dim = embedding_dim
         self.hidden_dim = hidden_dim
+        self.num_epochs = num_epochs
         self.train_batch_size = train_batch_size
         self.train_learning_rate = train_learning_rate
         self.update_learning_rate = update_learning_rate
@@ -82,6 +83,7 @@ class DualEmbPredictor(BaseMatchPredictor):
             axis=1,
         )
         df["categorical_result"] = df["categorical_result"].astype(CATEGORICAL_DTYPE)
+        df.to_csv("results.csv")
         return df[["predicted_score_difference", "categorical_result"]]
 
     def _prepare_dataset(self, X: pd.DataFrame, y: pd.DataFrame) -> list:
@@ -162,7 +164,7 @@ class DualEmbPredictor(BaseMatchPredictor):
 
         return outputs, model.embedding.weight.grad
 
-    def _train(self, model, optimizer, criterion, data, targets, batch_size):
+    def _train(self, model, optimizer, criterion, data, targets, batch_size, val_data=None, val_targets=None):
         num_samples = data.size(0)
         model.train()
 
@@ -195,15 +197,42 @@ class DualEmbPredictor(BaseMatchPredictor):
             # Update progress bar
             pbar.set_postfix(loss=f"{loss.item():.4f}")
 
-    def fit(self, X: pd.DataFrame, y: pd.DataFrame) -> None:
+        # Validation
+        if val_data is not None and val_targets is not None:
+            model.eval()
+            with torch.no_grad():
+                val_outputs = model(val_data)
+                val_loss = criterion(val_outputs, val_targets)
+                print(f"Validation Loss: {val_loss.item():.4f}")
+
+    def fit(self, X: pd.DataFrame, y: pd.DataFrame, validation_set: float=0.0) -> None:
         X, y, team_mapping = self._prepare_dataset(X, y)
-        # Set mapping
-        self.team_mapping = team_mapping
+        # Create random indices for the validation set
+        if validation_set > 0.0:
+            num_samples = len(X) // 2
+            even_indices = np.arange(0, num_samples * 2, 2)
+            np.random.shuffle(even_indices)
+            indices = np.empty((even_indices.size * 2,), dtype=even_indices.dtype)
+            indices[0::2] = even_indices
+            indices[1::2] = even_indices + 1
+            split_idx = int(num_samples * (1 - validation_set)) * 2
+            train_indices, val_indices = indices[:split_idx], indices[split_idx:]
+            train_X, val_X = X.iloc[train_indices], X.iloc[val_indices]
+            train_y, val_y = y.iloc[train_indices], y.iloc[val_indices]
+        else:
+            train_X, val_X = X, None
+            train_y, val_y = y, None
         # Convert data
-        data = torch.tensor(X.values).long()
-        targets = torch.tensor(y.values).float()
+        data = torch.tensor(train_X.values).long()
+        targets = torch.tensor(train_y.values).float()
+        if validation_set > 0.0:
+            val_data = torch.tensor(val_X.values).long()
+            val_targets = torch.tensor(val_y.values).float()
+        else:
+            val_data = None
+            val_targets = None
         # Get parameters
-        num_embeddings = len(self.team_mapping)
+        num_embeddings = len(team_mapping)
         num_features = data.shape[1] - 2
         # Train model
         self.model = DualEmbeddingNN(
@@ -216,31 +245,31 @@ class DualEmbPredictor(BaseMatchPredictor):
         optimizer = torch.optim.Adam(
             self.model.parameters(), lr=self.train_learning_rate
         )
-        self._train(
-            model=self.model,
-            optimizer=optimizer,
-            criterion=criterion,
-            data=data,
-            targets=targets,
-            batch_size=self.train_batch_size,
-        )
+        for epoch in range(self.num_epochs):
+            print(f"Epoch {epoch + 1}/{self.num_epochs}")
+            self._train(
+                model=self.model,
+                optimizer=optimizer,
+                criterion=criterion,
+                data=data,
+                targets=targets,
+                batch_size=self.train_batch_size * 2,
+                val_data=val_data,
+                val_targets=val_targets,
+            )
         # Extract the average embedding to get the default embedding
         self.default_embedding = self.model.embedding.weight.grad.mean(dim=0).tolist()
-        # # Predict and update
-        # outputs, targets, _ = self._predict_and_update(
-        #     X,
-        #     y,
-        #     self.model,
-        #     self.default_embedding,
-        #     self.update_learning_rate,
-        #     embeddings=self.team_embedding,
-        # )
-        # # Train logit model
-        # df = self._prepare_predicted_dataset(outputs, targets)
-        # mod_log = OrderedModel(
-        #     df["categorical_result"], df[["predicted_score_difference"]], distr="logit"
-        # )
-        # self.logit = mod_log.fit(method="bfgs", disp=False)
+        # Predict
+        outputs = self.model(data)
+        # Save tensors to CSV files
+        np.savetxt("tdata.csv", data.numpy(), delimiter=",")
+        np.savetxt("toutputs.csv", outputs.detach().numpy(), delimiter=",")
+        # Train logit model
+        df = self._prepare_predicted_dataset(outputs, targets)
+        mod_log = OrderedModel(
+            df["categorical_result"], df[["predicted_score_difference"]], distr="logit"
+        )
+        self.logit = mod_log.fit(method="bfgs", disp=False)
 
     def update(self, X: pd.DataFrame, y: pd.DataFrame) -> None:
         pass

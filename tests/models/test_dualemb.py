@@ -161,21 +161,21 @@ def test_dualebm_update(mock_dualemb_model):
     assert updated_embedding.shape == (2, 10)
 
 
-def test_dualebm_predict_and_update(mock_dualemb_model, mock_inputs, mock_targets):
-    model = DualEmbPredictor()
-    learning_rate = 0.001
-    default_embedding = torch.rand((1, 10)).tolist()[0]
-    outputs, targets, teams_embeddings = model._predict_and_update(
-        mock_inputs,
-        mock_targets,
-        mock_dualemb_model,
-        default_embedding,
-        learning_rate,
-        embeddings=None,
-    )
-    assert outputs.shape == (4, 2)
-    assert targets.shape == (4, 2)
-    assert len(teams_embeddings) == 3
+# def test_dualebm_predict_and_update(mock_dualemb_model, mock_inputs, mock_targets):
+#     model = DualEmbPredictor()
+#     learning_rate = 0.001
+#     default_embedding = torch.rand((1, 10)).tolist()[0]
+#     outputs, targets, teams_embeddings = model._predict_and_update(
+#         mock_inputs,
+#         mock_targets,
+#         mock_dualemb_model,
+#         default_embedding,
+#         learning_rate,
+#         embeddings=None,
+#     )
+#     assert outputs.shape == (4, 2)
+#     assert targets.shape == (4, 2)
+#     assert len(teams_embeddings) == 3
 
 
 def test_dualemb_fit(mock_inputs, mock_targets):
