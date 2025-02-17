@@ -185,6 +185,13 @@ def test_dualemb_fit(mock_inputs, mock_targets):
     assert model.model is not None
 
 
+def test_dualemb_average_outputs():
+    outputs = torch.tensor([[1, 9], [3, 4], [6, 1], [7, 4]])
+    model = DualEmbPredictor()
+    result = model._average_outputs(outputs)
+    assert result.tolist() == [[2.5, 6], [6, 2.5], [5, 4], [4, 5]]
+
+
 # def test_dualemb_predict_proba():
 #     df = pd.DataFrame(
 #         [

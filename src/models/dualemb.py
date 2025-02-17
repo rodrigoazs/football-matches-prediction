@@ -48,7 +48,7 @@ class DualEmbPredictor(BaseMatchPredictor):
         self,
         embedding_dim=10,
         hidden_dim=3,
-        num_epochs=10,
+        num_epochs=100,
         train_batch_size=32,
         train_learning_rate=0.001,
         update_learning_rate=0.001,
@@ -61,6 +61,15 @@ class DualEmbPredictor(BaseMatchPredictor):
         self.train_batch_size = train_batch_size
         self.train_learning_rate = train_learning_rate
         self.update_learning_rate = update_learning_rate
+
+    def _average_outputs(self, outputs):
+        team_indices = outputs[::2].float()
+        opponent_indices = outputs[1::2][:, [1, 0]].float()
+        average_outputs = (team_indices + opponent_indices) / 2
+        result_matrix = torch.zeros_like(outputs).float()
+        result_matrix[::2] = average_outputs
+        result_matrix[1::2] = average_outputs[:, [1, 0]]
+        return result_matrix
 
     def _prepare_predicted_dataset(self, outputs, targets):
         df = pd.DataFrame(
@@ -163,7 +172,17 @@ class DualEmbPredictor(BaseMatchPredictor):
 
         return outputs, model.embedding.weight.grad
 
-    def _train(self, model, optimizer, criterion, data, targets, batch_size, val_data=None, val_targets=None):
+    def _train(
+        self,
+        model,
+        optimizer,
+        criterion,
+        data,
+        targets,
+        batch_size,
+        val_data=None,
+        val_targets=None,
+    ):
         num_samples = data.size(0)
         model.train()
 
@@ -204,7 +223,9 @@ class DualEmbPredictor(BaseMatchPredictor):
                 val_loss = criterion(val_outputs, val_targets)
                 print(f"Validation Loss: {val_loss.item():.4f}")
 
-    def fit(self, X: pd.DataFrame, y: pd.DataFrame, validation_set: float=0.0) -> None:
+    def fit(
+        self, X: pd.DataFrame, y: pd.DataFrame, validation_set: float = 0.0
+    ) -> None:
         X, y, team_mapping = self._prepare_dataset(X, y)
         # Create random indices for the validation set
         if validation_set > 0.0:
@@ -259,7 +280,7 @@ class DualEmbPredictor(BaseMatchPredictor):
         # Extract the average embedding to get the default embedding
         self.default_embedding = self.model.embedding.weight.grad.mean(dim=0).tolist()
         # Predict
-        outputs = self.model(data)
+        outputs = self._average_outputs(self.model(data))
         # Train logit model
         df = self._prepare_predicted_dataset(outputs, targets)
         mod_log = OrderedModel(
