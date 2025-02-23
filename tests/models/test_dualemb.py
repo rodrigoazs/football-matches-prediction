@@ -1,4 +1,5 @@
 import unittest
+from copy import deepcopy
 
 import pandas as pd
 import pytest
@@ -190,6 +191,22 @@ def test_dualemb_average_outputs():
     model = DualEmbPredictor()
     result = model._average_outputs(outputs)
     assert result.tolist() == [[2.5, 6], [6, 2.5], [5, 4], [4, 5]]
+
+
+def test_dualemb_predict(mock_inputs, mock_targets):
+    model = DualEmbPredictor()
+    model.fit(mock_inputs, mock_targets)
+    pred = model.predict(mock_inputs)
+    assert pred.shape == (6, 3)
+
+
+def test_dualemb_update(mock_inputs, mock_targets):
+    model = DualEmbPredictor()
+    model.fit(mock_inputs, mock_targets)
+    old_embeddings = deepcopy(model.embeddings)
+    model.update(mock_inputs, mock_targets)
+    new_embeddings = deepcopy(model.embeddings)
+    assert old_embeddings != new_embeddings
 
 
 # def test_dualemb_predict_proba():
