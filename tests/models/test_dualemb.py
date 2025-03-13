@@ -209,28 +209,11 @@ def test_dualemb_update(mock_inputs, mock_targets):
     assert old_embeddings != new_embeddings
 
 
-# def test_dualemb_predict_proba():
-#     df = pd.DataFrame(
-#         [
-#             {
-#                 "date": "2024-02-01",
-#                 "home_team": "team1",
-#                 "home_score": 2,
-#                 "away_score": 3,
-#                 "away_team": "team2",
-#                 "neutral": False,
-#             },
-#             {
-#                 "date": "2024-01-01",
-#                 "home_team": "team1",
-#                 "home_score": 2,
-#                 "away_score": 1,
-#                 "away_team": "team3",
-#                 "neutral": True,
-#             },
-#         ]
-#     )
-#     model = DualEmbPredictor()
-#     model.fit(df)
-#     pred = model.predict_proba(df)
-#     assert pred.shape == (2, 3)
+def test_dualemb_predict_and_update(mock_inputs, mock_targets):
+    model = DualEmbPredictor()
+    model.fit(mock_inputs, mock_targets)
+    old_embeddings = deepcopy(model.embeddings)
+    pred = model.predict_and_update(mock_inputs, mock_targets)
+    new_embeddings = deepcopy(model.embeddings)
+    assert old_embeddings != new_embeddings
+    assert pred.shape == (6, 3)

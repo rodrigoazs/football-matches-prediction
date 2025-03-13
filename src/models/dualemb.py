@@ -135,37 +135,6 @@ class DualEmbPredictor(BaseMatchPredictor):
         embeddings_map = {k: embeddings[v] for k, v in team_mapping.items()}
         self.embeddings.update(embeddings_map)
 
-    def _predict_and_update(
-        self, X, y, model, default_embedding, learning_rate, embeddings=None
-    ):
-        teams_embeddings = {} if embeddings is None else embeddings
-        outputs = None
-        targets = None
-        reversed_X, reversed_y = self._reverse_matches()
-        for _, row in df.iterrows():
-            criterion = torch.nn.MSELoss()
-            optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-            team_embedding = teams_embeddings.get(row["team_id"], default_embedding)
-            opponent_embedding = teams_embeddings.get(
-                row["opponent_id"], default_embedding
-            )
-            embeddings = torch.tensor([team_embedding, opponent_embedding])
-            output, updated_embedding = _update(
-                model=model,
-                optimizer=optimizer,
-                criterion=criterion,
-                data=X,
-                targets=y,
-                embeddings=embeddings,
-            )
-            teams_embeddings[row["home_team"]] = updated_embedding[0].tolist()
-            teams_embeddings[row["away_team"]] = updated_embedding[1].tolist()
-            outputs = (
-                torch.cat((outputs, output), dim=0) if outputs is not None else output
-            )
-            targets = torch.cat((targets, y), dim=0) if targets is not None else y
-        return outputs, targets, teams_embeddings
-
     def _update(self, model, optimizer, criterion, data, targets, embeddings):
         # Set the embedding matrix from the given matrix
         model.embedding.weight = torch.nn.Parameter(embeddings.clone())
@@ -314,10 +283,12 @@ class DualEmbPredictor(BaseMatchPredictor):
         )
         self.logit = mod_log.fit(method="bfgs", disp=False)
 
-    def update(self, X: pd.DataFrame, y: pd.DataFrame) -> None:
+    def _predict_and_update(self, X: pd.DataFrame, y: pd.DataFrame):
         X, y, team_mapping = self._prepare_dataset(X, y)
         # Prepare embeddings
         embeddings = self._prepare_embeddings(team_mapping)
+        # List of outputs
+        outputs = []
         # Iterate pairs
         for i in range(0, len(X), 2):
             pair_X = X.iloc[i : i + 2]
@@ -340,7 +311,7 @@ class DualEmbPredictor(BaseMatchPredictor):
             data = torch.tensor(pair_X.values).long()
             targets = torch.tensor(pair_y.values).float()
             # Update
-            _, updated_embedding = self._update(
+            output, updated_embedding = self._update(
                 model=self.model,
                 optimizer=optimizer,
                 criterion=criterion,
@@ -348,9 +319,14 @@ class DualEmbPredictor(BaseMatchPredictor):
                 targets=targets,
                 embeddings=tensor_embeddings,
             )
+            outputs.append(output)
             embeddings[team_id] = updated_embedding[0].tolist()
             embeddings[opponent_id] = updated_embedding[1].tolist()
         self._update_embeddings(team_mapping, embeddings)
+        return torch.cat(outputs, dim=0)
+
+    def update(self, X: pd.DataFrame, y: pd.DataFrame):
+        _ = self._predict_and_update(X, y)
 
     def predict(self, X: pd.DataFrame):
         X, _, team_mapping = self._prepare_dataset(X, pd.DataFrame([]))
@@ -367,5 +343,9 @@ class DualEmbPredictor(BaseMatchPredictor):
             self.logit.params, exog=df[["predicted_score_difference"]]
         )
 
-    def predict_and_update(self, X: pd.DataFrame, y: pd.DataFrame) -> None:
-        pass
+    def predict_and_update(self, X: pd.DataFrame, y: pd.DataFrame):
+        outputs = self._predict_and_update(X, y)
+        df = self._prepare_predicted_score_dataset(outputs)
+        return self.logit.model.predict(
+            self.logit.params, exog=df[["predicted_score_difference"]]
+        )
