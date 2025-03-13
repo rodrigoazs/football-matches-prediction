@@ -2,6 +2,7 @@ import unittest
 from copy import deepcopy
 
 import pandas as pd
+import numpy as np
 import pytest
 import torch
 
@@ -162,23 +163,6 @@ def test_dualebm_update(mock_dualemb_model):
     assert updated_embedding.shape == (2, 10)
 
 
-# def test_dualebm_predict_and_update(mock_dualemb_model, mock_inputs, mock_targets):
-#     model = DualEmbPredictor()
-#     learning_rate = 0.001
-#     default_embedding = torch.rand((1, 10)).tolist()[0]
-#     outputs, targets, teams_embeddings = model._predict_and_update(
-#         mock_inputs,
-#         mock_targets,
-#         mock_dualemb_model,
-#         default_embedding,
-#         learning_rate,
-#         embeddings=None,
-#     )
-#     assert outputs.shape == (4, 2)
-#     assert targets.shape == (4, 2)
-#     assert len(teams_embeddings) == 3
-
-
 def test_dualemb_fit(mock_inputs, mock_targets):
     model = DualEmbPredictor()
     model.fit(mock_inputs, mock_targets)
@@ -193,11 +177,18 @@ def test_dualemb_average_outputs():
     assert result.tolist() == [[2.5, 6], [6, 2.5], [5, 4], [4, 5]]
 
 
+def test_dualemb_normalize_outputs():
+    outputs = np.array([[0.1, 0.5, 0.4], [0.2, 0.3, 0.5], [0.1, 0.0, 0.9], [0.9, 0.0, 0.1]])
+    model = DualEmbPredictor()
+    result = model._normalize_outputs(outputs)
+    assert result == pytest.approx(np.array([[(0.1+0.5)/2, (0.5+0.3)/2, (0.4+0.2)/2], [(0.1+0.1)/2, (0.0+0.0)/2, (0.9+0.9)/2]]))
+
+
 def test_dualemb_predict(mock_inputs, mock_targets):
     model = DualEmbPredictor()
     model.fit(mock_inputs, mock_targets)
     pred = model.predict(mock_inputs)
-    assert pred.shape == (6, 3)
+    assert pred.shape == (3, 3)
 
 
 def test_dualemb_update(mock_inputs, mock_targets):
@@ -216,4 +207,4 @@ def test_dualemb_predict_and_update(mock_inputs, mock_targets):
     pred = model.predict_and_update(mock_inputs, mock_targets)
     new_embeddings = deepcopy(model.embeddings)
     assert old_embeddings != new_embeddings
-    assert pred.shape == (6, 3)
+    assert pred.shape == (3, 3)
