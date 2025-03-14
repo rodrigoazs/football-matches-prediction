@@ -177,13 +177,6 @@ def test_dualemb_average_outputs():
     assert result.tolist() == [[2.5, 6], [6, 2.5], [5, 4], [4, 5]]
 
 
-def test_dualemb_normalize_outputs():
-    outputs = np.array([[0.1, 0.5, 0.4], [0.2, 0.3, 0.5], [0.1, 0.0, 0.9], [0.9, 0.0, 0.1]])
-    model = DualEmbPredictor()
-    result = model._normalize_outputs(outputs)
-    assert result == pytest.approx(np.array([[(0.1+0.5)/2, (0.5+0.3)/2, (0.4+0.2)/2], [(0.1+0.1)/2, (0.0+0.0)/2, (0.9+0.9)/2]]))
-
-
 def test_dualemb_predict(mock_inputs, mock_targets):
     model = DualEmbPredictor()
     model.fit(mock_inputs, mock_targets)

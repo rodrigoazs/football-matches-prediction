@@ -51,7 +51,7 @@ class DualEmbPredictor(BaseMatchPredictor):
         num_epochs=100,
         train_batch_size=32,
         train_learning_rate=0.001,
-        update_learning_rate=0.05,
+        update_learning_rate=0.001,
     ):
         self.embeddings = {}
         self.logit = None
@@ -70,13 +70,6 @@ class DualEmbPredictor(BaseMatchPredictor):
         result_matrix = torch.zeros_like(outputs).float()
         result_matrix[::2] = average_outputs
         result_matrix[1::2] = average_outputs[:, [1, 0]]
-        return result_matrix
-
-    def _normalize_outputs(self, outputs):
-        team_indices = outputs[::2]
-        opponent_indices = outputs[1::2][:, [2, 1, 0]]
-        outputs = team_indices + opponent_indices
-        result_matrix = outputs / outputs.sum(axis=1, keepdims=True)
         return result_matrix
 
     def _prepare_predicted_dataset(self, outputs, targets):
@@ -346,13 +339,13 @@ class DualEmbPredictor(BaseMatchPredictor):
         with torch.no_grad():
             outputs = self._average_outputs(self.model(data))
         df = self._prepare_predicted_score_dataset(outputs)
-        return self._normalize_outputs(self.logit.model.predict(
+        return self.logit.model.predict(
             self.logit.params, exog=df[["predicted_score_difference"]]
-        ))
+        )[::2]
 
     def predict_and_update(self, X: pd.DataFrame, y: pd.DataFrame):
         outputs = self._predict_and_update(X, y)
         df = self._prepare_predicted_score_dataset(outputs)
-        return self._normalize_outputs(self.logit.model.predict(
+        return self.logit.model.predict(
             self.logit.params, exog=df[["predicted_score_difference"]]
-        ))
+        )[::2]
