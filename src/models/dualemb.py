@@ -164,7 +164,7 @@ class DualEmbPredictor(BaseMatchPredictor):
         # Update weights (only the embedding layer will be updated)
         optimizer.step()
 
-        return outputs, model.embedding.weight.grad
+        return outputs, model.embedding.weight
 
     def _train(
         self,
@@ -272,7 +272,7 @@ class DualEmbPredictor(BaseMatchPredictor):
                 val_targets=val_targets,
             )
         # Extract the average embedding to get the default embedding
-        self.default_embedding = self.model.embedding.weight.grad.mean(dim=0).tolist()
+        self.default_embedding = self.model.embedding.weight.mean(dim=0).tolist()
         # Predict
         with torch.no_grad():
             outputs = self._average_outputs(self.model(data))
