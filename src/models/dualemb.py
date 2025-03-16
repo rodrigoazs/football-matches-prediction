@@ -51,7 +51,7 @@ class DualEmbPredictor(BaseMatchPredictor):
         num_epochs=100,
         train_batch_size=32,
         train_learning_rate=0.001,
-        update_learning_rate=0.001,
+        update_learning_rate=0.01,
     ):
         self.embeddings = {}
         self.logit = None
@@ -135,9 +135,11 @@ class DualEmbPredictor(BaseMatchPredictor):
         embeddings_map = {k: embeddings[v] for k, v in team_mapping.items()}
         self.embeddings.update(embeddings_map)
 
-    def _update(self, model, optimizer, criterion, data, targets, embeddings):
+    def _update(self, model, criterion, data, targets, embeddings):
         # Set the embedding matrix from the given matrix
-        model.embedding.weight = torch.nn.Parameter(embeddings.clone())
+        model.embedding.weight = torch.nn.Parameter(
+            embeddings.clone(), requires_grad=True
+        )
 
         # Freeze all weights except for the embedding layer
         for name, param in model.named_parameters():
@@ -145,6 +147,9 @@ class DualEmbPredictor(BaseMatchPredictor):
                 param.requires_grad = False
             else:
                 param.requires_grad = True  # Ensure embedding layer is trainable
+
+        # Set the optmizer
+        optimizer = torch.optim.Adam(model.parameters(), lr=self.update_learning_rate)
 
         # Set the model to training mode
         model.train()
@@ -301,9 +306,6 @@ class DualEmbPredictor(BaseMatchPredictor):
             pair_X["opponent_id"] = [1, 0]
             # Setup
             criterion = torch.nn.MSELoss()
-            optimizer = torch.optim.Adam(
-                self.model.parameters(), lr=self.update_learning_rate
-            )
             team_embedding = embeddings[team_id]
             opponent_embedding = embeddings[opponent_id]
             tensor_embeddings = torch.tensor([team_embedding, opponent_embedding])
@@ -313,7 +315,6 @@ class DualEmbPredictor(BaseMatchPredictor):
             # Update
             output, updated_embedding = self._update(
                 model=self.model,
-                optimizer=optimizer,
                 criterion=criterion,
                 data=data,
                 targets=targets,

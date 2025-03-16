@@ -1,8 +1,8 @@
 import unittest
 from copy import deepcopy
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import pytest
 import torch
 
@@ -135,7 +135,6 @@ def test_dualebm_update(mock_dualemb_model):
     model = DualEmbPredictor()
     learning_rate = 0.001
     criterion = torch.nn.MSELoss()
-    optimizer = torch.optim.Adam(mock_dualemb_model.parameters(), lr=learning_rate)
     id1 = torch.tensor([0, 1])
     id2 = torch.tensor([1, 0])
     team_at_home = torch.tensor([0, 1])
@@ -153,7 +152,6 @@ def test_dualebm_update(mock_dualemb_model):
     embeddings = torch.rand((2, 10))
     outputs, updated_embedding = model._update(
         model=mock_dualemb_model,
-        optimizer=optimizer,
         criterion=criterion,
         data=data,
         targets=score_targets,
@@ -185,12 +183,15 @@ def test_dualemb_predict(mock_inputs, mock_targets):
 
 
 def test_dualemb_update(mock_inputs, mock_targets):
-    model = DualEmbPredictor()
+    model = DualEmbPredictor(update_learning_rate=0.1)
     model.fit(mock_inputs, mock_targets)
     old_embeddings = deepcopy(model.embeddings)
     model.update(mock_inputs, mock_targets)
     new_embeddings = deepcopy(model.embeddings)
     assert old_embeddings != new_embeddings
+    model.update(mock_inputs, mock_targets)
+    new2_embeddings = deepcopy(model.embeddings)
+    assert new_embeddings != new2_embeddings
 
 
 def test_dualemb_predict_and_update(mock_inputs, mock_targets):
