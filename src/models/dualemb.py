@@ -17,9 +17,10 @@ class DualEmbeddingNN(torch.nn.Module):
         self.embedding = torch.nn.Embedding(
             num_embeddings, embedding_dim
         )  # Embedding layer for IDs
-        self.fc1 = torch.nn.Linear(2 * embedding_dim + num_features, hidden_dim)
-        self.fc2 = torch.nn.Linear(hidden_dim, hidden_dim)
-        self.fc3 = torch.nn.Linear(hidden_dim, 2)
+        # self.fc1 = torch.nn.Linear(2 * embedding_dim + num_features, hidden_dim)
+        # self.fc2 = torch.nn.Linear(hidden_dim, hidden_dim)
+        # self.fc3 = torch.nn.Linear(hidden_dim, 2)
+        self.fc1 = torch.nn.Linear(2 * embedding_dim + num_features, 2)
 
     def forward(self, input_matrix):
         # # Extract the relevant columns from the input matrix
@@ -36,9 +37,10 @@ class DualEmbeddingNN(torch.nn.Module):
             dim=-1,
         )  # Concatenate along the last dimension
 
+        # x = torch.relu(self.fc1(combined))
+        # x = torch.relu(self.fc2(x))
+        # x = torch.relu(self.fc3(x))
         x = torch.relu(self.fc1(combined))
-        x = torch.relu(self.fc2(x))
-        x = torch.relu(self.fc3(x))
 
         return x
 
@@ -345,8 +347,6 @@ class DualEmbPredictor(BaseMatchPredictor):
         )[::2]
 
     def predict_and_update(self, X: pd.DataFrame, y: pd.DataFrame):
-        outputs = self._predict_and_update(X, y)
-        df = self._prepare_predicted_score_dataset(outputs)
-        return self.logit.model.predict(
-            self.logit.params, exog=df[["predicted_score_difference"]]
-        )[::2]
+        pred = self.predict(X)
+        _ = self._predict_and_update(X, y)
+        return pred

@@ -202,3 +202,13 @@ def test_dualemb_predict_and_update(mock_inputs, mock_targets):
     new_embeddings = deepcopy(model.embeddings)
     assert old_embeddings != new_embeddings
     assert pred.shape == (3, 3)
+
+
+def test_dualemb_predict_and_update_and_predict_same_predictions(
+    mock_inputs, mock_targets
+):
+    model = DualEmbPredictor()
+    model.fit(mock_inputs, mock_targets)
+    pred_1 = model.predict(mock_inputs)
+    pred_2 = model.predict_and_update(mock_inputs, mock_targets)
+    assert np.array_equal(pred_1, pred_2)
