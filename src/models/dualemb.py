@@ -14,6 +14,7 @@ CATEGORICAL_DTYPE = pd.CategoricalDtype(
 class DualEmbeddingNN(torch.nn.Module):
     def __init__(self, num_embeddings, embedding_dim, num_features, hidden_dim):
         super(DualEmbeddingNN, self).__init__()
+        self.hidden_dim = hidden_dim
         self.embedding = torch.nn.Embedding(
             num_embeddings, embedding_dim
         )  # Embedding layer for IDs
@@ -39,7 +40,7 @@ class DualEmbeddingNN(torch.nn.Module):
             dim=-1,
         )  # Concatenate along the last dimension
 
-        if hidden_dim:
+        if self.hidden_dim:
             x = torch.relu(self.fc1(combined))
             x = torch.relu(self.fc2(x))
             x = torch.relu(self.fc3(x))
