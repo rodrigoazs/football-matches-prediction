@@ -181,8 +181,6 @@ class DualEmbPredictor(BaseMatchPredictor):
         data,
         targets,
         batch_size,
-        val_data=None,
-        val_targets=None,
     ):
         num_samples = data.size(0)
         model.train()
@@ -216,42 +214,13 @@ class DualEmbPredictor(BaseMatchPredictor):
             # Update progress bar
             pbar.set_postfix(loss=f"{loss.item():.4f}")
 
-        # Validation
-        if val_data is not None and val_targets is not None:
-            model.eval()
-            with torch.no_grad():
-                val_outputs = model(val_data)
-                val_loss = criterion(val_outputs, val_targets)
-                print(f"Validation Loss: {val_loss.item():.4f}")
-
-    def fit(
-        self, X: pd.DataFrame, y: pd.DataFrame, validation_set: float = 0.0
-    ) -> None:
+    def fit(self, X: pd.DataFrame, y: pd.DataFrame) -> None:
         X, y, team_mapping = self._prepare_dataset(X, y)
-        # Create random indices for the validation set
-        if validation_set > 0.0:
-            num_samples = len(X) // 2
-            even_indices = np.arange(0, num_samples * 2, 2)
-            np.random.shuffle(even_indices)
-            indices = np.empty((even_indices.size * 2,), dtype=even_indices.dtype)
-            indices[0::2] = even_indices
-            indices[1::2] = even_indices + 1
-            split_idx = int(num_samples * (1 - validation_set)) * 2
-            train_indices, val_indices = indices[:split_idx], indices[split_idx:]
-            train_X, val_X = X.iloc[train_indices], X.iloc[val_indices]
-            train_y, val_y = y.iloc[train_indices], y.iloc[val_indices]
-        else:
-            train_X, val_X = X, None
-            train_y, val_y = y, None
+        train_X = X
+        train_y = y
         # Convert data
         data = torch.tensor(train_X.values).long()
         targets = torch.tensor(train_y.values).float()
-        if validation_set > 0.0:
-            val_data = torch.tensor(val_X.values).long()
-            val_targets = torch.tensor(val_y.values).float()
-        else:
-            val_data = None
-            val_targets = None
         # Get parameters
         num_embeddings = len(team_mapping)
         num_features = data.shape[1] - 2
@@ -275,8 +244,6 @@ class DualEmbPredictor(BaseMatchPredictor):
                 data=data,
                 targets=targets,
                 batch_size=self.train_batch_size * 2,
-                val_data=val_data,
-                val_targets=val_targets,
             )
         # Extract the average embedding to get the default embedding
         self.default_embedding = self.model.embedding.weight.mean(dim=0).tolist()
