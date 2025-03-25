@@ -33,12 +33,18 @@ results = pd.DataFrame({}, columns=["metric", "model", "fold", "iteration", "val
 logged = {}
 
 params_to_select = {
-    "embedding_dim": list(range(5, 55, 5)),
-    "num_epochs": list(range(5, 55, 5)),
-    "hidden_dim": list(range(0, 55, 1)),
-    "train_batch_size": list(range(16, 254 + 16, 16)),
-    "train_learning_rate": [0.001, 0.01, 0.1],
-    "update_learning_rate": [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5],
+    # "embedding_dim": list(range(5, 55, 5)),
+    # "num_epochs": list(range(5, 55, 5)),
+    # "hidden_dim": list(range(0, 10, 1)),
+    # "train_batch_size": list(range(16, 254 + 16, 16)),
+    # "train_learning_rate": [0.001, 0.01],
+    # "update_learning_rate": [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5],
+    "embedding_dim": [10],
+    "num_epochs": [100],
+    "hidden_dim": [0],
+    "train_batch_size": [32, 64, 128],
+    "train_learning_rate": [0.001],
+    "update_learning_rate": [0.02, 0.03, 0.04, 0.05],
 }
 
 while True:
@@ -65,11 +71,11 @@ while True:
                     X_train = fold_train[
                         ["team_id", "opponent_id", "team_at_home", "opponent_at_home"]
                     ]
-                    y_train = fold_train[["team_score", "opponent_score"]] / 10.0
+                    y_train = fold_train[["team_score", "opponent_score"]]
                     X_test = fold_test[
                         ["team_id", "opponent_id", "team_at_home", "opponent_at_home"]
                     ]
-                    y_test = fold_test[["team_score", "opponent_score"]] / 10.0
+                    y_test = fold_test[["team_score", "opponent_score"]]
                     model = model_class(**params)
                     model.fit(X_train, y_train)
                     pred = model.predict_and_update(X_test, y_test)
@@ -102,12 +108,7 @@ while True:
                         }
 
         # Log parameters
-        mlflow.log_param("embedding_dim", 20)
-        mlflow.log_param("num_epochs", 50)
-        mlflow.log_param("hidden_dim", 10)
-        mlflow.log_param("train_batch_size", 10)
-        mlflow.log_param("train_learning_rate", 0.01)
-        mlflow.log_param("update_learning_rate", 0.01)
+        mlflow.log_params(params)
 
         # Log metrics
         for metric, model, value in (

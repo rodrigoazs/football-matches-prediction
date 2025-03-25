@@ -319,6 +319,8 @@ class DualEmbPredictor(BaseMatchPredictor):
         )[::2]
 
     def predict_and_update(self, X: pd.DataFrame, y: pd.DataFrame):
-        pred = self.predict(X)
-        _ = self._predict_and_update(X, y)
-        return pred
+        outputs = self._average_outputs(self._predict_and_update(X, y))
+        df = self._prepare_predicted_score_dataset(outputs)
+        return self.logit.model.predict(
+            self.logit.params, exog=df[["predicted_score_difference"]]
+        )[::2]
