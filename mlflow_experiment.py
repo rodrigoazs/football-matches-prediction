@@ -4,6 +4,7 @@ import mlflow
 import numpy as np
 import pandas as pd
 from sklearn.metrics import classification_report, log_loss, roc_auc_score
+from sklearn.utils import shuffle
 
 from src.dataset import get_dataset
 from src.models.dualemb import DualEmbPredictor
@@ -39,12 +40,12 @@ params_to_select = {
     # "train_batch_size": list(range(16, 254 + 16, 16)),
     # "train_learning_rate": [0.001, 0.01],
     # "update_learning_rate": [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5],
-    "embedding_dim": [10],
+    "embedding_dim": [20, 25, 30, 100],
     "num_epochs": [100],
-    "hidden_dim": [0],
-    "train_batch_size": [32, 64, 128],
+    "hidden_dim": [6, 12],
+    "train_batch_size": [128, 128*2],
     "train_learning_rate": [0.001],
-    "update_learning_rate": [0.02, 0.03, 0.04, 0.05],
+    "update_learning_rate": [0.02, 0.03],
 }
 
 while True:

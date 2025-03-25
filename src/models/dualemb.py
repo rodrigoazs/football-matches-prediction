@@ -20,8 +20,7 @@ class DualEmbeddingNN(torch.nn.Module):
         )  # Embedding layer for IDs
         if hidden_dim:
             self.fc1 = torch.nn.Linear(2 * embedding_dim + num_features, hidden_dim)
-            self.fc2 = torch.nn.Linear(hidden_dim, hidden_dim)
-            self.fc3 = torch.nn.Linear(hidden_dim, 2)
+            self.fc2 = torch.nn.Linear(hidden_dim, 2)
         else:
             self.fc1 = torch.nn.Linear(2 * embedding_dim + num_features, 2)
 
@@ -43,10 +42,8 @@ class DualEmbeddingNN(torch.nn.Module):
         if self.hidden_dim:
             x = torch.relu(self.fc1(combined))
             x = torch.relu(self.fc2(x))
-            x = torch.relu(self.fc3(x))
         else:
             x = torch.relu(self.fc1(combined))
-
         return x
 
 
