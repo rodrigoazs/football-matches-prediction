@@ -45,7 +45,7 @@ params_to_select = {
     "hidden_dim": [6, 12],
     "train_batch_size": [128, 128*2],
     "train_learning_rate": [0.001],
-    "update_learning_rate": [0.02, 0.03],
+    "update_learning_rate": [0.02],
 }
 
 while True:
