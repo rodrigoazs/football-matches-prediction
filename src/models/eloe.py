@@ -125,8 +125,8 @@ class ELOePredictor(BaseMatchPredictor):
         for x_tuple, y_tuple in zip(X_copy.iterrows(), y_copy.iterrows()):
             x_index, x_row = x_tuple
             y_index, y_row = y_tuple
-            X_copy.at[x_index, "team_rating"] = self.elo.get_rating(x_row["team_id"])
-            X_copy.at[x_index, "opponent_rating"] = self.elo.get_rating(x_row["opponent_id"])
+            X_copy.at[x_index, "team_rating"] = self.elo.get_rating(x_row["team_id"]) / 3000
+            X_copy.at[x_index, "opponent_rating"] = self.elo.get_rating(x_row["opponent_id"]) / 3000
             self.elo.update_ratings(x_row["team_id"], x_row["opponent_id"], y_row["team_score"], y_row["opponent_score"], True if x_row["team_at_home"] == 1.0 else False, True if x_row["opponent_at_home"] == 1.0 else False)
         return X_copy
 
@@ -159,8 +159,8 @@ class ELOePredictor(BaseMatchPredictor):
             )
         }
         X_with_ratings = X.copy()
-        X_with_ratings["team_rating"] = X_with_ratings["team_id"].apply(lambda x: self.elo.get_rating(x))
-        X_with_ratings["opponent_rating"] = X_with_ratings["opponent_id"].apply(lambda x: self.elo.get_rating(x))
+        X_with_ratings["team_rating"] = X_with_ratings["team_id"].apply(lambda x: self.elo.get_rating(x)) / 3000
+        X_with_ratings["opponent_rating"] = X_with_ratings["opponent_id"].apply(lambda x: self.elo.get_rating(x)) / 3000
         df_X, df_y = self._reverse_matches(X_with_ratings, y)
         df_X["team_id"] = df_X["team_id"].map(team_mapping)
         df_X["opponent_id"] = df_X["opponent_id"].map(team_mapping)
